@@ -136,6 +136,27 @@ export function parseTimeToMs(timeStr: string): number {
 }
 
 /**
+ * Парсит время из форматированной строки HH:MM:SS.mmm в миллисекунды
+ * 
+ * @param timeStr Время в формате HH:MM:SS.mmm
+ * @returns Время в миллисекундах
+ */
+export function parseFormattedTimeToMs(timeStr: string): number {
+  if (!timeStr) return 0
+  
+  const parts = timeStr.split(':')
+  if (parts.length !== 3) return 0
+  
+  const hh = parseInt(parts[0], 10)
+  const mm = parseInt(parts[1], 10)
+  const ss = parseFloat(parts[2])
+  
+  if (isNaN(hh) || isNaN(mm) || isNaN(ss)) return 0
+  
+  return (hh * 3600 + mm * 60 + ss) * 1000
+}
+
+/**
  * Форматирует время из строки HHMMSS.mmm в HH:MM:SS.mmm
  * 
  * @param timeStr Время в формате HHMMSS.mmm

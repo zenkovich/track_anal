@@ -17,7 +17,7 @@ import {
   metersToGps,
   haversineDistance,
   vboToDecimal,
-  parseTimeToMs,
+  parseFormattedTimeToMs,
   formatVBOTime
 } from './coordinateUtils'
 import {
@@ -209,9 +209,9 @@ export class VBOParser {
       const prev = rows[i - 1]
       const curr = rows[i]
       
-      // Время относительно предыдущей точки
-      const prevTime = parseTimeToMs(prev.time)
-      const currTime = parseTimeToMs(curr.time)
+      // Время относительно предыдущей точки (time уже в формате HH:MM:SS.mmm)
+      const prevTime = parseFormattedTimeToMs(prev.time)
+      const currTime = parseFormattedTimeToMs(curr.time)
       curr.deltaTime = currTime - prevTime
       
       // Расстояние по Haversine
@@ -348,6 +348,12 @@ export class VBOParser {
         currentLapRows.push(intersectionPoint)
         const lapEndIdx = i - 1 // Конец круга - последняя полная точка
         
+        const firstTime = currentLapRows[0].time
+        const lastTime = intersectionPoint.time
+        console.log(`[Lap ${laps.length}] Created: ${currentLapRows.length} points`)
+        console.log(`  First time: ${firstTime}, Last time: ${lastTime}`)
+        console.log(`  Intersection point (interpolated): time=${intersectionPoint.time}`)
+        
         laps.push(
           new LapData(
             laps.length,
@@ -359,10 +365,10 @@ export class VBOParser {
           )
         )
         
-        console.log(`[Lap ${laps.length}] startIdx=${lapStartIdx}, endIdx=${lapEndIdx}, points=${currentLapRows.length}`)
-        
         // Начинаем новый круг с копии интерполированной точки
-        currentLapRows = [{ ...intersectionPoint }]
+        const newStartPoint = { ...intersectionPoint }
+        console.log(`[Lap ${laps.length}] Starting: first point time=${newStartPoint.time}`)
+        currentLapRows = [newStartPoint]
         lapStartIdx = i // Следующий круг начинается с текущей точки
       } else {
         // Добавляем точку в текущий круг
@@ -412,19 +418,28 @@ export class VBOParser {
     // Конвертируем обратно в GPS
     const gps = metersToGps(x, y, bbox.minLat, bbox.minLong)
     
-    // Интерполяция времени
-    const time1 = parseTimeToMs(p1.time)
-    const time2 = parseTimeToMs(p2.time)
+    // Интерполяция времени (используем parseFormattedTimeToMs для формата HH:MM:SS.mmm)
+    const time1 = parseFormattedTimeToMs(p1.time)
+    const time2 = parseFormattedTimeToMs(p2.time)
     const timeMs = time1 + t * (time2 - time1)
     
-    // Форматирование времени
+    // Debug первой интерполяции
+    if (time1 === 0 || time2 === 0 || isNaN(timeMs)) {
+      console.log(`[interpolatePoint] ERROR:`)
+      console.log(`  p1.time="${p1.time}" -> ${time1}ms`)
+      console.log(`  p2.time="${p2.time}" -> ${time2}ms`)
+      console.log(`  t=${t}, result=${timeMs}ms`)
+    }
+    
+    // Форматирование времени в формат HH:MM:SS.mmm
     const totalSeconds = timeMs / 1000
     const hh = Math.floor(totalSeconds / 3600)
     const mm = Math.floor((totalSeconds % 3600) / 60)
-    const ss = totalSeconds % 60
-    const timeFormatted = `${hh.toString().padStart(2, '0')}:${mm
-      .toString()
-      .padStart(2, '0')}:${ss.toFixed(3).padStart(6, '0')}`
+    const ssRemainder = totalSeconds % 60
+    const ssWhole = Math.floor(ssRemainder)
+    const ssFrac = Math.floor((ssRemainder - ssWhole) * 1000)
+    
+    const timeFormatted = `${hh.toString().padStart(2, '0')}:${mm.toString().padStart(2, '0')}:${ssWhole.toString().padStart(2, '0')}.${ssFrac.toString().padStart(3, '0')}`
     
     return {
       sats: p1.sats,
@@ -458,7 +473,7 @@ export type {
 export { VBOData } from '../models/VBOData'
 
 // Экспортируем функции конвертации для использования в TrackVisualizer
-export { gpsToMeters, metersToGps } from './coordinateUtils'
+export { gpsToMeters, metersToGps, parseFormattedTimeToMs } from './coordinateUtils'
 
 // Интерфейс Lap для обратной совместимости
 export interface Lap {

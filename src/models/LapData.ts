@@ -52,6 +52,48 @@ export class LapData {
     this.startIdx = startIdx
     this.endIdx = endIdx
     this.allRows = allRows
+    
+    // Инициализируем время и дистанцию от начала круга для каждой точки
+    this.initializeLapParameters()
+  }
+  
+  /**
+   * Инициализирует параметры времени и дистанции от начала круга для каждой точки
+   */
+  private initializeLapParameters(): void {
+    if (this.rows.length === 0) return
+    
+    const firstRow = this.rows[0]
+    const startTime = this.parseTime(firstRow.time)
+    let cumulativeDistance = 0
+    
+    // Debug первой точки
+    console.log(`[Lap ${this.index}] Init: first time="${firstRow.time}", parsed=${startTime}ms, isInterpolated=${firstRow.isInterpolated}`)
+    
+    this.rows.forEach((row, idx) => {
+      // Время от начала круга (всегда относительно первой точки ЭТОГО круга)
+      const rowTime = this.parseTime(row.time)
+      row.lapTimeFromStart = rowTime - startTime
+      
+      // Дистанция от начала круга
+      if (idx > 0 && row.distance) {
+        cumulativeDistance += row.distance
+      }
+      row.lapDistanceFromStart = cumulativeDistance
+      
+      // Debug нескольких точек для первых двух кругов
+      if (this.index <= 1 && (idx === 0 || idx === Math.floor(this.rows.length / 2) || idx === this.rows.length - 1)) {
+        console.log(`  [${idx}] time="${row.time}", lapTimeFromStart=${row.lapTimeFromStart}ms (${(row.lapTimeFromStart/1000).toFixed(2)}s), dist=${row.lapDistanceFromStart?.toFixed(1)}m`)
+      }
+    })
+    
+    // Debug для первых двух кругов
+    if (this.index <= 1 && this.rows.length > 1) {
+      console.log(`[Lap ${this.index}] Summary:`)
+      const lastRow = this.rows[this.rows.length-1]
+      console.log(`  Total time: ${lastRow.lapTimeFromStart}ms (${(lastRow.lapTimeFromStart! / 1000).toFixed(2)}s)`)
+      console.log(`  Total distance: ${lastRow.lapDistanceFromStart?.toFixed(1)}m`)
+    }
   }
 
   /**
@@ -133,21 +175,18 @@ export class LapData {
   }
 
   /**
-   * Форматирует миллисекунды в строку MM:SS.mmm
+   * Форматирует миллисекунды в строку M:SS.mmm (как в таблице)
    */
   private formatTime(ms: number): string {
-    if (isNaN(ms) || ms < 0) return '00:00.000'
+    if (isNaN(ms) || ms < 0) return '0:00.000'
     
     const totalSeconds = ms / 1000
     const minutes = Math.floor(totalSeconds / 60)
-    const seconds = Math.floor(totalSeconds % 60)
-    const milliseconds = Math.floor((totalSeconds % 1) * 1000)
+    const secondsRemainder = totalSeconds - (minutes * 60)
+    const secWhole = Math.floor(secondsRemainder)
+    const secFrac = Math.floor((secondsRemainder - secWhole) * 1000)
 
-    const mm = minutes.toString().padStart(2, '0')
-    const ss = seconds.toString().padStart(2, '0')
-    const mmm = milliseconds.toString().padStart(3, '0')
-
-    return `${mm}:${ss}.${mmm}`
+    return `${minutes}:${secWhole.toString().padStart(2, '0')}.${secFrac.toString().padStart(3, '0')}`
   }
 
   /**

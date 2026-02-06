@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { TileCache, calculateZoom, getTilesForBounds, tileToLatLng } from '../utils/tiles'
 import { VBOData } from '../models/VBOData'
-import { metersToGps } from '../utils/vboParser'
+import { metersToGps, gpsToMeters } from '../utils/vboParser'
 import './TrackVisualizer.css'
 
 interface TrackVisualizerProps {
@@ -18,6 +18,17 @@ interface ViewState {
   offsetX: number
   offsetY: number
   scale: number
+}
+
+interface TrackPoint {
+  lapIndex: number
+  lapColor: string
+  lapName: string
+  distance: number // Дистанция от начала круга (м)
+  time: string // Время от начала круга
+  velocity: number // Скорость (км/ч)
+  x: number // Экранная координата X
+  y: number // Экранная координата Y
 }
 
 export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKey, showDebugPanel: showDebugPanelProp = false, updateCounter = 0 }: TrackVisualizerProps) {
@@ -47,7 +58,23 @@ export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKe
   const [showTileBorders, setShowTileBorders] = useState(false)
   const [showTileLabels, setShowTileLabels] = useState(false)
   const [showStartFinishDebug, setShowStartFinishDebug] = useState(false)
+  const [showHoverDebug, setShowHoverDebug] = useState(false)
   const tileCacheRef = useRef(new TileCache('google'))
+  
+  const [hoveredPoints, setHoveredPoints] = useState<TrackPoint[]>([])
+  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null)
+  const [debugHoverData, setDebugHoverData] = useState<{
+    mouseMeters: { x: number; y: number }
+    searchRadius: number
+    minDistance: number
+    checkedSegments: Array<{
+      p1: { x: number; y: number }
+      p2: { x: number; y: number }
+      proj: { x: number; y: number }
+      dist: number
+      inRange: boolean
+    }>
+  } | null>(null)
   
   const showTiles = showTilesProp
   const showDebugPanel = showDebugPanelProp
@@ -255,12 +282,195 @@ export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKe
         offsetX: e.clientX - dragStart.x,
         offsetY: e.clientY - dragStart.y
       }))
+    } else {
+      // Обработка hover для показа параметров траектории
+      const canvas = canvasRef.current
+      if (!canvas || !baseParams) return
+      
+      const rect = canvas.getBoundingClientRect()
+      const mouseX = e.clientX - rect.left
+      const mouseY = e.clientY - rect.top
+      
+      setMousePos({ x: mouseX, y: mouseY })
+      
+      // Конвертация экранных координат в world координаты (локальные координаты canvas)
+      const worldX = (mouseX - viewState.offsetX) / viewState.scale
+      const worldY = (mouseY - viewState.offsetY) / viewState.scale
+      
+      // Конвертация world координат в GPS координаты
+      const mouseLong = worldX / baseParams.baseScale + baseParams.centerX
+      const mouseLat = -worldY / baseParams.baseScale + baseParams.centerY
+      
+      // Конвертация GPS в метрические координаты трека (те же что в VBODataRow.x, VBODataRow.y)
+      const bbox = data.boundingBox
+      const mouseMeters = gpsToMeters(mouseLat, mouseLong, bbox.minLat, bbox.minLong)
+      
+      // Конвертация пикселей в метры
+      // 1 пиксель на экране = (1 / viewState.scale) локальных единиц
+      // 1 локальная единица = (1 / baseParams.baseScale) градусов
+      // 1 градус ≈ 111км на широте bbox.centerLat
+      const metersPerDegree = 111000 * Math.cos((bbox.centerLat * Math.PI) / 180)
+      const metersPerLocalUnit = metersPerDegree / baseParams.baseScale
+      const metersPerPixel = metersPerLocalUnit / viewState.scale
+      
+      // Трешхолд: 50 пикселей
+      const minDistancePixels = 50
+      const minDistanceMeters = minDistancePixels * metersPerPixel
+      const searchRadiusMeters = minDistanceMeters * 2
+      
+      const checkedSegments: Array<{
+        p1: { x: number; y: number }
+        p2: { x: number; y: number }
+        proj: { x: number; y: number }
+        dist: number
+        inRange: boolean
+      }> = []
+      
+      const foundPoints: TrackPoint[] = []
+      
+      // Ищем ближайшие точки для каждого видимого круга
+      data.laps.forEach((lap) => {
+        if (!lap.visible) return
+        
+        let closestDist = Infinity
+        let closestPoint: TrackPoint | null = null
+        
+        const rows = lap.rows
+        
+        for (let i = 1; i < rows.length; i++) {
+          const p1 = rows[i - 1]
+          const p2 = rows[i]
+          
+          // Быстрая проверка: отбрасываем далекие сегменты
+          const minX = Math.min(p1.x, p2.x) - searchRadiusMeters
+          const maxX = Math.max(p1.x, p2.x) + searchRadiusMeters
+          const minY = Math.min(p1.y, p2.y) - searchRadiusMeters
+          const maxY = Math.max(p1.y, p2.y) + searchRadiusMeters
+          
+          if (mouseMeters.x < minX || mouseMeters.x > maxX || 
+              mouseMeters.y < minY || mouseMeters.y > maxY) {
+            continue
+          }
+          
+          // Вычисляем проекцию курсора на отрезок
+          const dx = p2.x - p1.x
+          const dy = p2.y - p1.y
+          const segmentLength = Math.sqrt(dx * dx + dy * dy)
+          
+          if (segmentLength < 0.001) continue
+          
+          // Параметр t проекции [0, 1]
+          const t = Math.max(0, Math.min(1, 
+            ((mouseMeters.x - p1.x) * dx + (mouseMeters.y - p1.y) * dy) / (segmentLength * segmentLength)
+          ))
+          
+          // Точка проекции на отрезке
+          const projX = p1.x + t * dx
+          const projY = p1.y + t * dy
+          
+          // Расстояние от курсора до проекции
+          const dist = Math.sqrt(
+            (mouseMeters.x - projX) * (mouseMeters.x - projX) + 
+            (mouseMeters.y - projY) * (mouseMeters.y - projY)
+          )
+          
+          // Сохраняем для debug отрисовки
+          checkedSegments.push({
+            p1: { x: p1.x, y: p1.y },
+            p2: { x: p2.x, y: p2.y },
+            proj: { x: projX, y: projY },
+            dist: dist,
+            inRange: dist < minDistanceMeters
+          })
+          
+          if (dist < minDistanceMeters && dist < closestDist) {
+            closestDist = dist
+            
+            // Интерполируем параметры
+            const velocity = p1.velocity + t * (p2.velocity - p1.velocity)
+            
+            // Интерполируем дистанцию от начала круга (используем предрасчитанные значения)
+            const p1DistFromStart = p1.lapDistanceFromStart || 0
+            const p2DistFromStart = p2.lapDistanceFromStart || 0
+            const distanceFromStart = p1DistFromStart + t * (p2DistFromStart - p1DistFromStart)
+            
+            // Форматируем время как в списке кругов: M:SS.mmm
+            const formatTimeTooltip = (ms: number): string => {
+              if (isNaN(ms) || ms < 0) return '0:00.000'
+              const totalSeconds = ms / 1000
+              const minutes = Math.floor(totalSeconds / 60)
+              const secondsRemainder = totalSeconds - (minutes * 60)
+              const secWhole = Math.floor(secondsRemainder)
+              const secFrac = Math.floor((secondsRemainder - secWhole) * 1000)
+              return `${minutes}:${secWhole.toString().padStart(2, '0')}.${secFrac.toString().padStart(3, '0')}`
+            }
+            
+            // Интерполируем время от начала круга (используем предрасчитанные значения)
+            const p1TimeFromStart = p1.lapTimeFromStart || 0
+            const p2TimeFromStart = p2.lapTimeFromStart || 0
+            const timeFromStart = p1TimeFromStart + t * (p2TimeFromStart - p1TimeFromStart)
+            
+            // Debug вывод времени для первого близкого сегмента каждого круга
+            if (showHoverDebug && lap.index <= 2 && dist < minDistanceMeters && closestDist === Infinity) {
+              console.log(`[Hover] Lap ${lap.index}, segment ${i}/${rows.length}, dist=${dist.toFixed(2)}m:`)
+              console.log(`  p1: time="${p1.time}", lapTimeFromStart=${p1.lapTimeFromStart}, using=${p1TimeFromStart}ms`)
+              console.log(`  p2: time="${p2.time}", lapTimeFromStart=${p2.lapTimeFromStart}, using=${p2TimeFromStart}ms`)
+              console.log(`  t=${t.toFixed(3)}, result=${timeFromStart.toFixed(1)}ms = ${formatTimeTooltip(timeFromStart)}`)
+              
+              // Проверяем точки круга
+              console.log(`  Lap has ${rows.length} points, first.time="${rows[0].time}", last.time="${rows[rows.length-1].time}"`)
+            }
+            
+            // Конвертируем проекцию (метры) обратно в экранные координаты
+            // 1. Метры -> GPS
+            const projGps = metersToGps(projX, projY, bbox.minLat, bbox.minLong)
+            // 2. GPS -> локальные координаты canvas
+            const projLocalX = (projGps.long - baseParams.centerX) * baseParams.baseScale
+            const projLocalY = -(projGps.lat - baseParams.centerY) * baseParams.baseScale
+            // 3. Локальные -> экранные
+            const screenX = projLocalX * viewState.scale + viewState.offsetX
+            const screenY = projLocalY * viewState.scale + viewState.offsetY
+            
+            closestPoint = {
+              lapIndex: lap.index,
+              lapColor: lap.color,
+              lapName: `Lap ${lap.index + 1}`,
+              distance: distanceFromStart,
+              time: formatTimeTooltip(timeFromStart),
+              velocity: velocity,
+              x: screenX,
+              y: screenY
+            }
+          }
+        }
+        
+        if (closestPoint) {
+          foundPoints.push(closestPoint)
+        }
+      })
+      
+      setHoveredPoints(foundPoints)
+      setDebugHoverData({
+        mouseMeters,
+        searchRadius: searchRadiusMeters,
+        minDistance: minDistanceMeters,
+        checkedSegments
+      })
+      
+      // Debug: показываем конвертацию только при включенном debug режиме
+      if (showHoverDebug && checkedSegments.length > 0) {
+        console.log(`[Hover] metersPerPixel: ${metersPerPixel.toFixed(4)}m, minDistance: ${minDistanceMeters.toFixed(2)}m (${minDistancePixels}px)`)
+        console.log(`[Hover] Checked segments: ${checkedSegments.length}, in range: ${checkedSegments.filter(s => s.inRange).length}`)
+      }
     }
-  }, [isDragging, dragStart.x, dragStart.y])
+  }, [isDragging, dragStart.x, dragStart.y, viewState, baseParams, data, showHoverDebug])
 
   const handleMouseUp = useCallback(() => setIsDragging(false), [])
   const handleMouseLeave = useCallback(() => {
     setIsDragging(false)
+    setHoveredPoints([])
+    setMousePos(null)
+    setDebugHoverData(null)
   }, [])
 
   const toggleTileBorders = () => {
@@ -273,6 +483,10 @@ export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKe
 
   const toggleStartFinishDebug = () => {
     setShowStartFinishDebug(prev => !prev)
+  }
+  
+  const toggleHoverDebug = () => {
+    setShowHoverDebug(prev => !prev)
   }
 
   useEffect(() => {
@@ -549,6 +763,179 @@ export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKe
     ctx.stroke()
 
     ctx.restore()
+    
+    // === DEBUG ОТРИСОВКА HOVER (только если включена) ===
+    if (showHoverDebug && debugHoverData && mousePos) {
+      ctx.save()
+      ctx.translate(viewState.offsetX, viewState.offsetY)
+      ctx.scale(viewState.scale, viewState.scale)
+      
+      const md = debugHoverData
+      
+      // Конвертируем метры в локальные координаты canvas
+      const toLocalX = (long: number) => (long - baseParams.centerX) * baseParams.baseScale
+      const toLocalY = (lat: number) => -(lat - baseParams.centerY) * baseParams.baseScale
+      
+      // Конвертируем метры трека в GPS, затем в локальные
+      const mouseGps = metersToGps(md.mouseMeters.x, md.mouseMeters.y, bbox.minLat, bbox.minLong)
+      const mouseLX = toLocalX(mouseGps.long)
+      const mouseLY = toLocalY(mouseGps.lat)
+      
+      // 1. Перекрестие курсора
+      ctx.strokeStyle = '#FFFF00'
+      ctx.lineWidth = 2 / viewState.scale
+      const crossSize = 15 / viewState.scale
+      ctx.beginPath()
+      ctx.moveTo(mouseLX - crossSize, mouseLY)
+      ctx.lineTo(mouseLX + crossSize, mouseLY)
+      ctx.moveTo(mouseLX, mouseLY - crossSize)
+      ctx.lineTo(mouseLX, mouseLY + crossSize)
+      ctx.stroke()
+      
+      // 2. Круг search radius (x2 от min distance)
+      ctx.strokeStyle = 'rgba(255, 255, 0, 0.5)'
+      ctx.lineWidth = 1 / viewState.scale
+      const searchRadiusLocal = md.searchRadius * baseParams.baseScale
+      ctx.beginPath()
+      ctx.arc(mouseLX, mouseLY, searchRadiusLocal, 0, 2 * Math.PI)
+      ctx.stroke()
+      
+      // 3. Круг min distance
+      ctx.strokeStyle = 'rgba(0, 255, 0, 0.7)'
+      ctx.lineWidth = 2 / viewState.scale
+      const minDistLocal = md.minDistance * baseParams.baseScale
+      ctx.beginPath()
+      ctx.arc(mouseLX, mouseLY, minDistLocal, 0, 2 * Math.PI)
+      ctx.stroke()
+      
+      // 4. Проверенные сегменты и проекции
+      md.checkedSegments.forEach(seg => {
+        // Конвертируем точки сегмента из метров в локальные координаты
+        const p1Gps = metersToGps(seg.p1.x, seg.p1.y, bbox.minLat, bbox.minLong)
+        const p2Gps = metersToGps(seg.p2.x, seg.p2.y, bbox.minLat, bbox.minLong)
+        const projGps = metersToGps(seg.proj.x, seg.proj.y, bbox.minLat, bbox.minLong)
+        
+        const p1LX = toLocalX(p1Gps.long)
+        const p1LY = toLocalY(p1Gps.lat)
+        const p2LX = toLocalX(p2Gps.long)
+        const p2LY = toLocalY(p2Gps.lat)
+        const projLX = toLocalX(projGps.long)
+        const projLY = toLocalY(projGps.lat)
+        
+        // Рисуем сегмент (проверенная часть траектории)
+        ctx.strokeStyle = seg.inRange ? 'rgba(0, 255, 0, 0.8)' : 'rgba(255, 0, 0, 0.5)'
+        ctx.lineWidth = 3 / viewState.scale
+        ctx.beginPath()
+        ctx.moveTo(p1LX, p1LY)
+        ctx.lineTo(p2LX, p2LY)
+        ctx.stroke()
+        
+        // Рисуем проекцию (линия от курсора к проекции)
+        ctx.strokeStyle = seg.inRange ? 'rgba(0, 255, 0, 0.6)' : 'rgba(255, 0, 0, 0.4)'
+        ctx.lineWidth = 1 / viewState.scale
+        ctx.setLineDash([5 / viewState.scale, 5 / viewState.scale])
+        ctx.beginPath()
+        ctx.moveTo(mouseLX, mouseLY)
+        ctx.lineTo(projLX, projLY)
+        ctx.stroke()
+        ctx.setLineDash([])
+        
+        // Точка проекции
+        ctx.fillStyle = seg.inRange ? '#00FF00' : '#FF0000'
+        ctx.strokeStyle = '#FFFFFF'
+        ctx.lineWidth = 1 / viewState.scale
+        const projSize = 5 / viewState.scale
+        ctx.beginPath()
+        ctx.arc(projLX, projLY, projSize, 0, 2 * Math.PI)
+        ctx.fill()
+        ctx.stroke()
+      })
+      
+      ctx.restore()
+      
+      // Координаты курсора (в экранных координатах) - вписываем в canvas
+      ctx.save()
+      
+      const inRangeCount = md.checkedSegments.filter(s => s.inRange).length
+      const panelWidth = 260
+      const panelHeight = 80
+      
+      // Вписываем в область canvas
+      let panelX = mousePos.x + 20
+      let panelY = mousePos.y - panelHeight
+      
+      if (panelX + panelWidth > canvas.width) {
+        panelX = mousePos.x - panelWidth - 20
+      }
+      if (panelY < 0) {
+        panelY = mousePos.y + 20
+      }
+      if (panelX < 0) panelX = 10
+      
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.9)'
+      ctx.fillRect(panelX, panelY, panelWidth, panelHeight)
+      ctx.strokeStyle = '#FFFF00'
+      ctx.lineWidth = 1
+      ctx.strokeRect(panelX, panelY, panelWidth, panelHeight)
+      
+      ctx.font = '11px monospace'
+      let yOffset = panelY + 15
+      
+      ctx.fillStyle = '#FFFF00'
+      ctx.fillText(`Screen: (${mousePos.x.toFixed(0)}, ${mousePos.y.toFixed(0)})`, panelX + 5, yOffset)
+      yOffset += 13
+      
+      ctx.fillStyle = '#00FF00'
+      ctx.fillText(`Meters: (${md.mouseMeters.x.toFixed(1)}, ${md.mouseMeters.y.toFixed(1)})`, panelX + 5, yOffset)
+      yOffset += 13
+      
+      ctx.fillStyle = '#FF6B00'
+      ctx.fillText(`Threshold: ${md.minDistance.toFixed(2)}m (50px)`, panelX + 5, yOffset)
+      yOffset += 13
+      
+      ctx.fillStyle = inRangeCount > 0 ? '#00FF00' : '#FF0000'
+      ctx.fillText(`Segments: ${md.checkedSegments.length} (${inRangeCount} in range)`, panelX + 5, yOffset)
+      yOffset += 13
+      
+      ctx.fillStyle = hoveredPoints.length > 0 ? '#00FF00' : '#FFFFFF'
+      ctx.fillText(`Found: ${hoveredPoints.length} points`, panelX + 5, yOffset)
+      
+      ctx.restore()
+    }
+    
+    // Hover точки (финальные найденные точки) - всегда показываются
+    if (hoveredPoints.length > 0 && !showHoverDebug) {
+      ctx.save()
+      ctx.translate(viewState.offsetX, viewState.offsetY)
+      ctx.scale(viewState.scale, viewState.scale)
+      
+      hoveredPoints.forEach(point => {
+        // Конвертируем экранные координаты точки в локальные canvas
+        const localX = (point.x - viewState.offsetX) / viewState.scale
+        const localY = (point.y - viewState.offsetY) / viewState.scale
+        
+        // Рисуем точку на траектории
+        ctx.fillStyle = point.lapColor
+        ctx.strokeStyle = '#ffffff'
+        ctx.lineWidth = 3 / viewState.scale
+        const hoverPointSize = 8 / viewState.scale
+        ctx.beginPath()
+        ctx.arc(localX, localY, hoverPointSize, 0, 2 * Math.PI)
+        ctx.fill()
+        ctx.stroke()
+        
+        // Рисуем круг вокруг точки
+        ctx.strokeStyle = point.lapColor
+        ctx.lineWidth = 2 / viewState.scale
+        ctx.beginPath()
+        ctx.arc(localX, localY, hoverPointSize * 1.8, 0, 2 * Math.PI)
+        ctx.stroke()
+      })
+      
+      ctx.restore()
+    }
+
+    ctx.restore()
     })
 
     return () => {
@@ -556,7 +943,7 @@ export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKe
         cancelAnimationFrame(animationFrameRef.current)
       }
     }
-  }, [data.rows, dimensions, viewState, baseParams, debugInfo, tiles, showTileBorders, showTileLabels, showStartFinishDebug, updateCounter])
+  }, [data.rows, dimensions, viewState, baseParams, debugInfo, tiles, showTileBorders, showTileLabels, showStartFinishDebug, showHoverDebug, updateCounter, hoveredPoints, mousePos, debugHoverData])
 
   return (
     <div className="track-visualizer" ref={containerRef}>
@@ -570,8 +957,76 @@ export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKe
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseLeave}
-        style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+        style={{ cursor: isDragging ? 'grabbing' : 'default' }}
       />
+      
+      {/* Tooltip с параметрами траектории */}
+      {hoveredPoints.length > 0 && mousePos && (() => {
+        // Размеры tooltip (примерные)
+        const tooltipWidth = 200
+        const tooltipHeight = 50 + hoveredPoints.length * 75
+        const offset = 15
+        
+        // Вписываем в область canvas
+        let left = mousePos.x + offset
+        let top = mousePos.y + offset
+        
+        // Проверка выхода за правый край
+        if (left + tooltipWidth > dimensions.width) {
+          left = mousePos.x - tooltipWidth - offset
+        }
+        
+        // Проверка выхода за нижний край
+        if (top + tooltipHeight > dimensions.height) {
+          top = mousePos.y - tooltipHeight - offset
+        }
+        
+        // Проверка выхода за левый край
+        if (left < 0) {
+          left = offset
+        }
+        
+        // Проверка выхода за верхний край
+        if (top < 0) {
+          top = offset
+        }
+        
+        return (
+          <div 
+            className="track-tooltip"
+            style={{
+              left: `${left}px`,
+              top: `${top}px`
+            }}
+          >
+          {hoveredPoints.map((point, idx) => (
+            <div key={idx} className="track-tooltip-item">
+              <div className="track-tooltip-header">
+                <span 
+                  className="track-tooltip-color"
+                  style={{ backgroundColor: point.lapColor }}
+                ></span>
+                <span className="track-tooltip-lap">{point.lapName}</span>
+              </div>
+              <div className="track-tooltip-params">
+                <div className="track-tooltip-param">
+                  <span className="track-tooltip-label">Distance:</span>
+                  <span className="track-tooltip-value">{(point.distance / 1000).toFixed(3)} km</span>
+                </div>
+                <div className="track-tooltip-param">
+                  <span className="track-tooltip-label">Time:</span>
+                  <span className="track-tooltip-value">{point.time}</span>
+                </div>
+                <div className="track-tooltip-param">
+                  <span className="track-tooltip-label">Speed:</span>
+                  <span className="track-tooltip-value">{point.velocity.toFixed(1)} km/h</span>
+                </div>
+              </div>
+            </div>
+          ))}
+          </div>
+        )
+      })()}
       
       {showDebugPanel && (
         <div className="debug-panel">
@@ -605,6 +1060,17 @@ export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKe
               </label>
               <div className="debug-line">Loaded tiles: {tiles.size}</div>
               <div className="debug-line">Cache size: {tileCacheRef.current.size()}</div>
+            </div>
+            <div className="debug-section">
+              <h4>Hover Detection</h4>
+              <label className="debug-checkbox">
+                <input
+                  type="checkbox"
+                  checked={showHoverDebug}
+                  onChange={toggleHoverDebug}
+                />
+                <span>Show hover debug</span>
+              </label>
             </div>
             <div className="debug-section">
               <h4>Start/Finish Detection</h4>

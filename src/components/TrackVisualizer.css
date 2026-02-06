@@ -17,6 +17,75 @@
   touch-action: none;
 }
 
+/* Tooltip с параметрами траектории */
+.track-tooltip {
+  position: absolute;
+  background: rgba(26, 26, 26, 0.95);
+  border: 1px solid #FF6B00;
+  border-radius: 8px;
+  padding: 8px;
+  pointer-events: none;
+  z-index: 50;
+  min-width: 180px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.track-tooltip-item {
+  margin-bottom: 8px;
+}
+
+.track-tooltip-item:last-child {
+  margin-bottom: 0;
+}
+
+.track-tooltip-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.track-tooltip-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  flex-shrink: 0;
+}
+
+.track-tooltip-lap {
+  font-size: 11px;
+  font-weight: 600;
+  color: #FF6B00;
+  text-transform: uppercase;
+}
+
+.track-tooltip-params {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.track-tooltip-param {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.track-tooltip-label {
+  color: #888;
+  font-weight: 500;
+}
+
+.track-tooltip-value {
+  color: #e0e0e0;
+  font-weight: 600;
+  font-family: monospace;
+}
+
 .debug-toggle-button {
   position: absolute;
   bottom: 20px;

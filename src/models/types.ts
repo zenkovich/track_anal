@@ -42,6 +42,10 @@ export interface VBODataRow {
   direction?: Vector2D  // Направление движения (нормализованный вектор)
   perpendicular?: Vector2D // Перпендикуляр к направлению
   
+  // Параметры в контексте круга
+  lapTimeFromStart?: number    // Время от начала круга (мс)
+  lapDistanceFromStart?: number // Дистанция от начала круга (м)
+  
   // Флаги
   isInterpolated?: boolean // Точка создана интерполяцией (на пересечении)
 }
