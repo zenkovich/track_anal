@@ -60,6 +60,107 @@ export class VBOData {
   }
 
   /**
+   * Находит самый быстрый круг среди видимых
+   * @returns Индекс самого быстрого круга или null если нет видимых
+   */
+  getFastestVisibleLap(): number | null {
+    const visibleLaps = this.getVisibleLaps()
+    if (visibleLaps.length === 0) return null
+    
+    let fastestLap = visibleLaps[0]
+    let fastestTime = fastestLap.getStats().time
+    
+    for (const lap of visibleLaps) {
+      const stats = lap.getStats()
+      if (stats.time > 0 && stats.time < fastestTime) {
+        fastestTime = stats.time
+        fastestLap = lap
+      }
+    }
+    
+    return fastestLap.index
+  }
+
+  /**
+   * Вычисляет медиану времен кругов
+   */
+  private getMedianTime(): number | null {
+    const times = this._laps
+      .map(l => l.getStats().time)
+      .filter(time => time > 0)
+      .sort((a, b) => a - b)
+    
+    if (times.length === 0) return null
+    
+    const mid = Math.floor(times.length / 2)
+    if (times.length % 2 === 0) {
+      return (times[mid - 1] + times[mid]) / 2
+    } else {
+      return times[mid]
+    }
+  }
+
+  /**
+   * Определяет является ли круг аномальным (outlier)
+   * На основе отклонения от медианы
+   * @param lapIndex Индекс круга
+   * @param tolerancePercent Допустимое отклонение от медианы в процентах (по умолчанию 15%)
+   * @returns true если круг аномальный
+   */
+  isOutlier(lapIndex: number, tolerancePercent: number = 15): boolean {
+    const lap = this._laps[lapIndex]
+    if (!lap) return false
+    
+    if (this._laps.length < 3) return false
+    
+    const median = this.getMedianTime()
+    if (median === null) return false
+    
+    const lapTime = lap.getStats().time
+    if (lapTime <= 0) return false
+    
+    // Вычисляем допустимый диапазон
+    const tolerance = median * (tolerancePercent / 100)
+    const minTime = median - tolerance
+    const maxTime = median + tolerance
+    
+    return lapTime < minTime || lapTime > maxTime
+  }
+
+  /**
+   * Применяет эвристику для автоматической фильтрации кругов
+   * Скрывает круги которые отличаются от медианы более чем на tolerancePercent
+   * @param tolerancePercent Допустимое отклонение от медианы в процентах (по умолчанию 15%)
+   */
+  applyTimeHeuristics(tolerancePercent: number = 15): void {
+    if (this._laps.length < 3) return
+    
+    const median = this.getMedianTime()
+    if (median === null) return
+    
+    const tolerance = median * (tolerancePercent / 100)
+    const minTime = median - tolerance
+    const maxTime = median + tolerance
+    
+    console.log(`[Heuristics] Total laps: ${this._laps.length}`)
+    console.log(`[Heuristics] Median time: ${(median / 1000).toFixed(2)}s`)
+    console.log(`[Heuristics] Tolerance: ±${tolerancePercent}% (±${(tolerance / 1000).toFixed(2)}s)`)
+    console.log(`[Heuristics] Valid range: ${(minTime / 1000).toFixed(2)}s - ${(maxTime / 1000).toFixed(2)}s`)
+    
+    // Скрываем круги вне диапазона
+    let hiddenCount = 0
+    this._laps.forEach(lap => {
+      const stats = lap.getStats()
+      if (stats.time > 0 && (stats.time < minTime || stats.time > maxTime)) {
+        lap.setVisibility(false)
+        hiddenCount++
+      }
+    })
+    
+    console.log(`[Heuristics] Hidden ${hiddenCount} outlier laps`)
+  }
+
+  /**
    * Получает индексы видимых кругов (для обратной совместимости)
    */
   getVisibleLapIndices(): Set<number> {

@@ -67,9 +67,6 @@ export class LapData {
     const startTime = this.parseTime(firstRow.time)
     let cumulativeDistance = 0
     
-    // Debug первой точки
-    console.log(`[Lap ${this.index}] Init: first time="${firstRow.time}", parsed=${startTime}ms, isInterpolated=${firstRow.isInterpolated}`)
-    
     this.rows.forEach((row, idx) => {
       // Время от начала круга (всегда относительно первой точки ЭТОГО круга)
       const rowTime = this.parseTime(row.time)
@@ -80,20 +77,7 @@ export class LapData {
         cumulativeDistance += row.distance
       }
       row.lapDistanceFromStart = cumulativeDistance
-      
-      // Debug нескольких точек для первых двух кругов
-      if (this.index <= 1 && (idx === 0 || idx === Math.floor(this.rows.length / 2) || idx === this.rows.length - 1)) {
-        console.log(`  [${idx}] time="${row.time}", lapTimeFromStart=${row.lapTimeFromStart}ms (${(row.lapTimeFromStart/1000).toFixed(2)}s), dist=${row.lapDistanceFromStart?.toFixed(1)}m`)
-      }
     })
-    
-    // Debug для первых двух кругов
-    if (this.index <= 1 && this.rows.length > 1) {
-      console.log(`[Lap ${this.index}] Summary:`)
-      const lastRow = this.rows[this.rows.length-1]
-      console.log(`  Total time: ${lastRow.lapTimeFromStart}ms (${(lastRow.lapTimeFromStart! / 1000).toFixed(2)}s)`)
-      console.log(`  Total distance: ${lastRow.lapDistanceFromStart?.toFixed(1)}m`)
-    }
   }
 
   /**

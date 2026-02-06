@@ -48,13 +48,13 @@
 
 /* Заголовок панели */
 .laps-panel-header-side {
-  padding: 0.75rem 1rem;
+  padding: 0.6rem 0.8rem;
   background: rgba(255, 255, 255, 0.03);
   border-bottom: 1px solid #333;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  min-height: 50px;
+  gap: 0.6rem;
+  min-height: 45px;
   flex-shrink: 0;
 }
 
@@ -91,13 +91,13 @@
 .lap-checkbox-all {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.35rem;
   cursor: pointer;
   margin: 0;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   color: #b0b0b0;
   font-weight: 600;
-  padding: 0.3rem 0.6rem;
+  padding: 0.25rem 0.5rem;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
@@ -116,6 +116,31 @@
   accent-color: #FF6B00;
 }
 
+/* Кнопка фильтра */
+.filter-button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #808080;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.filter-button:hover {
+  background: rgba(255, 107, 0, 0.15);
+  color: #FF6B00;
+}
+
+.filter-button:active {
+  transform: scale(0.95);
+}
+
 /* Содержимое панели */
 .laps-panel-content-side {
   overflow-y: auto;
@@ -128,7 +153,7 @@
 .laps-table-side {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
 }
 
 .laps-table-side thead {
@@ -139,12 +164,12 @@
 }
 
 .laps-table-side th {
-  padding: 0.5rem 0.4rem;
+  padding: 0.4rem 0.3rem;
   font-weight: 600;
   color: #808080;
   border-bottom: 1px solid #333;
   white-space: nowrap;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -163,16 +188,53 @@
 }
 
 .laps-table-side td {
-  padding: 0.5rem 0.4rem;
+  padding: 0.35rem 0.3rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   white-space: nowrap;
   color: #b0b0b0;
   font-weight: 500;
+  height: 45px;
+  vertical-align: middle;
+}
+
+/* Колонка Solo */
+.col-solo {
+  width: 30px;
+  padding: 0 !important;
+  vertical-align: middle;
+}
+
+.solo-button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  margin-left: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #505050;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.solo-button:hover {
+  background: rgba(255, 107, 0, 0.2);
+  color: #FF6B00;
+}
+
+.solo-button:active {
+  background: rgba(255, 107, 0, 0.3);
+  transform: scale(0.95);
 }
 
 /* Колонка чекбокса */
 .col-checkbox {
-  width: 40px;
+  width: 35px;
   text-align: center;
 }
 
@@ -212,6 +274,20 @@
 /* Колонка Time */
 .col-time {
   text-align: right;
+}
+
+.col-time > div {
+  line-height: 1.2;
+}
+
+.col-time > div:first-child {
+  margin-bottom: 1px;
+}
+
+.time-delta {
+  font-size: 0.68rem;
+  font-weight: 600;
+  opacity: 0.85;
 }
 
 /* Колонка Speed */

@@ -10,8 +10,10 @@ interface TrackVisualizerProps {
   onToggleTiles?: () => void
   onReset?: () => void
   resetKey?: number
-  showDebugPanel?: boolean
+  showSettingsPanel?: boolean
   updateCounter?: number // Для принудительной перерисовки
+  tolerancePercent?: number
+  onToleranceChange?: (tolerance: number) => void
 }
 
 interface ViewState {
@@ -26,17 +28,26 @@ interface TrackPoint {
   lapName: string
   distance: number // Дистанция от начала круга (м)
   time: string // Время от начала круга
+  timeMs: number // Время в миллисекундах (для расчета дельты)
   velocity: number // Скорость (км/ч)
   x: number // Экранная координата X
   y: number // Экранная координата Y
+  isFastest: boolean // Самый быстрый круг
 }
 
-export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKey, showDebugPanel: showDebugPanelProp = false, updateCounter = 0 }: TrackVisualizerProps) {
+export function TrackVisualizer({ 
+  data, 
+  showTiles: showTilesProp = true, 
+  resetKey, 
+  showSettingsPanel: showSettingsPanelProp = false,
+  updateCounter = 0,
+  tolerancePercent = 15,
+  onToleranceChange
+}: TrackVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const animationFrameRef = useRef<number | null>(null)
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 })
-  const [debugInfo, setDebugInfo] = useState<string[]>([])
   
   const [viewState, setViewState] = useState<ViewState>({
     offsetX: 0,
@@ -77,7 +88,7 @@ export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKe
   } | null>(null)
   
   const showTiles = showTilesProp
-  const showDebugPanel = showDebugPanelProp
+  const showSettingsPanel = showSettingsPanelProp
 
   useEffect(() => {
     if (dimensions.width > 0 && dimensions.height > 0 && data.rows.length > 0) {
@@ -328,6 +339,9 @@ export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKe
       
       const foundPoints: TrackPoint[] = []
       
+      // Находим самый быстрый круг среди видимых
+      const fastestLapIndex = data.getFastestVisibleLap()
+      
       // Ищем ближайшие точки для каждого видимого круга
       data.laps.forEach((lap) => {
         if (!lap.visible) return
@@ -437,9 +451,11 @@ export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKe
               lapName: `Lap ${lap.index + 1}`,
               distance: distanceFromStart,
               time: formatTimeTooltip(timeFromStart),
+              timeMs: timeFromStart,
               velocity: velocity,
               x: screenX,
-              y: screenY
+              y: screenY,
+              isFastest: lap.index === fastestLapIndex
             }
           }
         }
@@ -463,7 +479,7 @@ export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKe
         console.log(`[Hover] Checked segments: ${checkedSegments.length}, in range: ${checkedSegments.filter(s => s.inRange).length}`)
       }
     }
-  }, [isDragging, dragStart.x, dragStart.y, viewState, baseParams, data, showHoverDebug])
+  }, [isDragging, dragStart.x, dragStart.y, viewState, baseParams, data, showHoverDebug, updateCounter])
 
   const handleMouseUp = useCallback(() => setIsDragging(false), [])
   const handleMouseLeave = useCallback(() => {
@@ -943,7 +959,7 @@ export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKe
         cancelAnimationFrame(animationFrameRef.current)
       }
     }
-  }, [data.rows, dimensions, viewState, baseParams, debugInfo, tiles, showTileBorders, showTileLabels, showStartFinishDebug, showHoverDebug, updateCounter, hoveredPoints, mousePos, debugHoverData])
+  }, [data.rows, dimensions, viewState, baseParams, tiles, showTileBorders, showTileLabels, showStartFinishDebug, showHoverDebug, updateCounter, hoveredPoints, mousePos, debugHoverData])
 
   return (
     <div className="track-visualizer" ref={containerRef}>
@@ -962,8 +978,11 @@ export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKe
       
       {/* Tooltip с параметрами траектории */}
       {hoveredPoints.length > 0 && mousePos && (() => {
+        // Находим референсную точку (самый быстрый круг)
+        const referencePoint = hoveredPoints.find(p => p.isFastest)
+        
         // Размеры tooltip (примерные)
-        const tooltipWidth = 200
+        const tooltipWidth = 280
         const tooltipHeight = 50 + hoveredPoints.length * 75
         const offset = 15
         
@@ -999,47 +1018,101 @@ export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKe
               top: `${top}px`
             }}
           >
-          {hoveredPoints.map((point, idx) => (
-            <div key={idx} className="track-tooltip-item">
-              <div className="track-tooltip-header">
-                <span 
-                  className="track-tooltip-color"
-                  style={{ backgroundColor: point.lapColor }}
-                ></span>
-                <span className="track-tooltip-lap">{point.lapName}</span>
+          {hoveredPoints.map((point, idx) => {
+            // Вычисляем дельты относительно референсной точки
+            let timeDelta = null
+            let speedDelta = null
+            
+            if (referencePoint && !point.isFastest) {
+              // Дельта времени (секунды)
+              const deltaTimeMs = point.timeMs - referencePoint.timeMs
+              timeDelta = {
+                value: (deltaTimeMs / 1000).toFixed(3),
+                color: deltaTimeMs < 0 ? '#00ff00' : '#ff6666',
+                sign: deltaTimeMs >= 0 ? '+' : ''
+              }
+              
+              // Дельта скорости (км/ч)
+              const deltaSpeed = point.velocity - referencePoint.velocity
+              speedDelta = {
+                value: Math.abs(deltaSpeed).toFixed(1),
+                color: deltaSpeed > 0 ? '#00ff00' : '#ff6666',
+                sign: deltaSpeed >= 0 ? '+' : '-'
+              }
+            }
+            
+            return (
+              <div key={idx} className="track-tooltip-item">
+                <div className="track-tooltip-header">
+                  <span 
+                    className="track-tooltip-color"
+                    style={{ backgroundColor: point.lapColor }}
+                  ></span>
+                  <span className="track-tooltip-lap">
+                    {point.isFastest && '🏁 '}
+                    {point.lapName}
+                  </span>
+                </div>
+                <div className="track-tooltip-params">
+                  <div className="track-tooltip-param">
+                    <span className="track-tooltip-label">Time:</span>
+                    <span className="track-tooltip-value">{point.time}</span>
+                    {timeDelta && (
+                      <span className="track-tooltip-delta" style={{ color: timeDelta.color }}>
+                        {timeDelta.sign}{timeDelta.value}
+                      </span>
+                    )}
+                  </div>
+                  <div className="track-tooltip-param">
+                    <span className="track-tooltip-label">Speed:</span>
+                    <span className="track-tooltip-value">{point.velocity.toFixed(1)} km/h</span>
+                    {speedDelta && (
+                      <span className="track-tooltip-delta" style={{ color: speedDelta.color }}>
+                        {speedDelta.sign}{speedDelta.value}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="track-tooltip-params">
-                <div className="track-tooltip-param">
-                  <span className="track-tooltip-label">Distance:</span>
-                  <span className="track-tooltip-value">{(point.distance / 1000).toFixed(3)} km</span>
-                </div>
-                <div className="track-tooltip-param">
-                  <span className="track-tooltip-label">Time:</span>
-                  <span className="track-tooltip-value">{point.time}</span>
-                </div>
-                <div className="track-tooltip-param">
-                  <span className="track-tooltip-label">Speed:</span>
-                  <span className="track-tooltip-value">{point.velocity.toFixed(1)} km/h</span>
-                </div>
-              </div>
-            </div>
-          ))}
+            )
+          })}
           </div>
         )
       })()}
       
-      {showDebugPanel && (
-        <div className="debug-panel">
+      {showSettingsPanel && (
+        <div className="debug-panel settings-panel">
           <div className="debug-panel-header">
-            <h3>VBO Track Viewer Debug</h3>
+            <h3>Settings</h3>
           </div>
           <div className="debug-panel-content">
             <div className="debug-section">
-              <h4>Track Info</h4>
-              {debugInfo.map((line, i) => (
-                <div key={i} className="debug-line">{line}</div>
-              ))}
+              <h4>Lap Filtering</h4>
+              <div className="setting-item">
+                <label className="setting-label">
+                  Tolerance: ±{tolerancePercent}% from median
+                </label>
+                <input
+                  type="range"
+                  min="5"
+                  max="50"
+                  step="5"
+                  value={tolerancePercent}
+                  onChange={(e) => onToleranceChange?.(parseInt(e.target.value))}
+                  className="setting-slider"
+                />
+              </div>
+              <div className="debug-line" style={{ marginTop: '8px', fontSize: '10px', color: '#888' }}>
+                Laps with times deviating more than {tolerancePercent}% from median will be filtered
+              </div>
             </div>
+            
+            <div className="debug-section">
+              <h4>Debug</h4>
+              <div className="debug-line">Points: {data.rows.length}</div>
+              <div className="debug-line">Laps: {data.laps.length}</div>
+            </div>
+            
             <div className="debug-section">
               <h4>Tile Settings</h4>
               <label className="debug-checkbox">
@@ -1061,6 +1134,7 @@ export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKe
               <div className="debug-line">Loaded tiles: {tiles.size}</div>
               <div className="debug-line">Cache size: {tileCacheRef.current.size()}</div>
             </div>
+            
             <div className="debug-section">
               <h4>Hover Detection</h4>
               <label className="debug-checkbox">
@@ -1072,6 +1146,7 @@ export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKe
                 <span>Show hover debug</span>
               </label>
             </div>
+            
             <div className="debug-section">
               <h4>Start/Finish Detection</h4>
               <label className="debug-checkbox">
@@ -1088,21 +1163,13 @@ export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKe
                   <div className="debug-line">Direction: ({data.startFinish.direction.x.toFixed(4)}, {data.startFinish.direction.y.toFixed(4)})</div>
                   <div className="debug-line">Perpendicular: ({data.startFinish.perpendicular.x.toFixed(4)}, {data.startFinish.perpendicular.y.toFixed(4)})</div>
                   <div className="debug-line">Width: {data.startFinish.width}m</div>
-                  <div className="debug-line" style={{ fontSize: '0.7rem', color: '#aaa', marginTop: '4px' }}>
-                    Detection segment endpoints:
-                  </div>
-                  <div className="debug-line" style={{ fontSize: '0.7rem', color: '#0f0' }}>
-                    P1: ({(data.startFinish.pointMeters.x - data.startFinish.perpendicular.x * data.startFinish.width / 2).toFixed(2)}, {(data.startFinish.pointMeters.y - data.startFinish.perpendicular.y * data.startFinish.width / 2).toFixed(2)})m
-                  </div>
-                  <div className="debug-line" style={{ fontSize: '0.7rem', color: '#0f0' }}>
-                    P2: ({(data.startFinish.pointMeters.x + data.startFinish.perpendicular.x * data.startFinish.width / 2).toFixed(2)}, {(data.startFinish.pointMeters.y + data.startFinish.perpendicular.y * data.startFinish.width / 2).toFixed(2)})m
-                  </div>
                 </>
               )}
             </div>
           </div>
         </div>
       )}
+      
     </div>
   )
 }

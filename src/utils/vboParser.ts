@@ -66,6 +66,9 @@ export class VBOParser {
     // 7. Создание модели данных
     const vboData = new VBOData(header, rows, boundingBox, startFinish, laps)
     
+    // 8. Применяем эвристику фильтрации (скрываем круги отличающиеся от медианы > 15%)
+    vboData.applyTimeHeuristics(15)
+    
     console.log('=== VBO Parser Complete ===')
     return vboData
   }
@@ -314,9 +317,6 @@ export class VBOParser {
     const sf = startFinish
     const laps: LapData[] = []
     
-    // bbox используется в interpolatePoint
-    console.log(`[splitIntoLaps] bbox: ${bbox.minLat.toFixed(6)}, ${bbox.minLong.toFixed(6)}`)
-    
     // Вычисляем две точки отрезка детекции (перпендикуляр к направлению движения)
     const halfWidth = sf.width / 2
     const detectionX1 = sf.pointMeters.x - sf.perpendicular.x * halfWidth
@@ -348,12 +348,6 @@ export class VBOParser {
         currentLapRows.push(intersectionPoint)
         const lapEndIdx = i - 1 // Конец круга - последняя полная точка
         
-        const firstTime = currentLapRows[0].time
-        const lastTime = intersectionPoint.time
-        console.log(`[Lap ${laps.length}] Created: ${currentLapRows.length} points`)
-        console.log(`  First time: ${firstTime}, Last time: ${lastTime}`)
-        console.log(`  Intersection point (interpolated): time=${intersectionPoint.time}`)
-        
         laps.push(
           new LapData(
             laps.length,
@@ -366,9 +360,7 @@ export class VBOParser {
         )
         
         // Начинаем новый круг с копии интерполированной точки
-        const newStartPoint = { ...intersectionPoint }
-        console.log(`[Lap ${laps.length}] Starting: first point time=${newStartPoint.time}`)
-        currentLapRows = [newStartPoint]
+        currentLapRows = [{ ...intersectionPoint }]
         lapStartIdx = i // Следующий круг начинается с текущей точки
       } else {
         // Добавляем точку в текущий круг
@@ -389,7 +381,6 @@ export class VBOParser {
           rows
         )
       )
-      console.log(`[Lap ${laps.length}] startIdx=${lapStartIdx}, endIdx=${lapEndIdx}, points=${currentLapRows.length}`)
     }
     
     // Если не нашли пересечений - весь трек один круг
@@ -397,7 +388,6 @@ export class VBOParser {
       laps.push(new LapData(0, rows, getLapColor(0), 0, rows.length - 1, rows))
     }
     
-    console.log(`Split into ${laps.length} laps:`, laps.map(lap => lap.rows.length))
     
     return laps
   }
@@ -423,13 +413,6 @@ export class VBOParser {
     const time2 = parseFormattedTimeToMs(p2.time)
     const timeMs = time1 + t * (time2 - time1)
     
-    // Debug первой интерполяции
-    if (time1 === 0 || time2 === 0 || isNaN(timeMs)) {
-      console.log(`[interpolatePoint] ERROR:`)
-      console.log(`  p1.time="${p1.time}" -> ${time1}ms`)
-      console.log(`  p2.time="${p2.time}" -> ${time2}ms`)
-      console.log(`  t=${t}, result=${timeMs}ms`)
-    }
     
     // Форматирование времени в формат HH:MM:SS.mmm
     const totalSeconds = timeMs / 1000

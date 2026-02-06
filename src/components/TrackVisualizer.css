@@ -71,19 +71,31 @@
 .track-tooltip-param {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
   font-size: 11px;
 }
 
 .track-tooltip-label {
   color: #888;
   font-weight: 500;
+  min-width: 55px;
 }
 
 .track-tooltip-value {
   color: #e0e0e0;
   font-weight: 600;
   font-family: monospace;
+  min-width: 75px;
+  text-align: right;
+}
+
+.track-tooltip-delta {
+  font-size: 10px;
+  font-weight: 600;
+  font-family: monospace;
+  min-width: 50px;
+  text-align: right;
 }
 
 .debug-toggle-button {
@@ -185,6 +197,62 @@
 
 .debug-checkbox span {
   user-select: none;
+}
+
+/* Панель настроек */
+.settings-panel {
+  right: 20px;
+  left: auto;
+}
+
+.setting-item {
+  margin-bottom: 12px;
+}
+
+.setting-label {
+  display: block;
+  font-size: 12px;
+  color: #b0b0b0;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.setting-slider {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  outline: none;
+  -webkit-appearance: none;
+  background: #404040;
+  cursor: pointer;
+}
+
+.setting-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #FF6B00;
+  cursor: pointer;
+  border: 2px solid #1a1a1a;
+}
+
+.setting-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #FF6B00;
+  cursor: pointer;
+  border: 2px solid #1a1a1a;
+}
+
+.setting-slider:hover::-webkit-slider-thumb {
+  background: #FF8533;
+}
+
+.setting-slider:hover::-moz-range-thumb {
+  background: #FF8533;
 }
 
 .reset-button,

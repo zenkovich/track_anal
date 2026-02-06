@@ -4,7 +4,7 @@ import { TrackVisualizer } from './components/TrackVisualizer'
 import { LapsPanel } from './components/LapsPanel'
 import { VBOData } from './models/VBOData'
 import { VBOParser } from './utils/vboParser'
-import { FolderIcon, MapIcon, ResetIcon, BugIcon, RacingFlagIcon } from './components/Icons'
+import { FolderIcon, MapIcon, ResetIcon, BugIcon, RacingFlagIcon, SettingsIcon } from './components/Icons'
 
 function App() {
   const [vboData, setVboData] = useState<VBOData | null>(null)
@@ -12,8 +12,9 @@ function App() {
   const [loading, setLoading] = useState<boolean>(false)
   const [showTiles, setShowTiles] = useState<boolean>(true)
   const [resetTrigger, setResetTrigger] = useState<number>(0)
-  const [showDebugPanel, setShowDebugPanel] = useState<boolean>(false)
+  const [showSettingsPanel, setShowSettingsPanel] = useState<boolean>(false)
   const [updateCounter, setUpdateCounter] = useState<number>(0) // Для принудительной перерисовки
+  const [tolerancePercent, setTolerancePercent] = useState<number>(15) // Допустимое отклонение от медианы
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -112,11 +113,11 @@ function App() {
                     <ResetIcon size={20} />
                   </button>
                   <button 
-                    onClick={() => setShowDebugPanel(prev => !prev)} 
+                    onClick={() => setShowSettingsPanel(prev => !prev)} 
                     className="control-button-icon"
-                    title="Отладка"
+                    title="Настройки и отладка"
                   >
-                    <BugIcon size={20} />
+                    <SettingsIcon size={20} />
                   </button>
                 </>
               )}
@@ -189,8 +190,10 @@ function App() {
                 onToggleTiles={handleToggleTiles}
                 onReset={handleReset}
                 resetKey={resetTrigger}
-                showDebugPanel={showDebugPanel}
+                showSettingsPanel={showSettingsPanel}
                 updateCounter={updateCounter}
+                tolerancePercent={tolerancePercent}
+                onToleranceChange={setTolerancePercent}
               />
             </div>
             <LapsPanel
@@ -198,6 +201,7 @@ function App() {
               onToggleLap={toggleLap}
               onToggleAllLaps={toggleAllLaps}
               updateCounter={updateCounter}
+              tolerancePercent={tolerancePercent}
             />
           </>
         )}

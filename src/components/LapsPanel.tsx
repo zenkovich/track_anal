@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { VBOData } from '../models/VBOData'
+import { FilterIcon, FilterOffIcon } from './Icons'
 import './LapsPanel.css'
 
 interface LapsPanelProps {
@@ -7,12 +8,45 @@ interface LapsPanelProps {
   onToggleLap: (lapIdx: number) => void
   onToggleAllLaps: (show: boolean) => void
   updateCounter: number // Для принудительной перерисовки
+  tolerancePercent: number
 }
 
-export function LapsPanel({ data, onToggleLap, onToggleAllLaps, updateCounter }: LapsPanelProps) {
+
+export function LapsPanel({ data, onToggleLap, onToggleAllLaps, updateCounter, tolerancePercent }: LapsPanelProps) {
   const [panelWidth, setPanelWidth] = useState(350)
   const [isResizing, setIsResizing] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
+  const [filterOutliers, setFilterOutliers] = useState(true) // По умолчанию включен
+
+  // Получаем отображаемые круги (после фильтрации)
+  const displayedLaps = data.laps.filter(lap => !filterOutliers || !data.isOutlier(lap.index, tolerancePercent))
+  
+  // Проверяем выбраны ли все отображаемые круги
+  const allDisplayedSelected = displayedLaps.length > 0 && displayedLaps.every(lap => lap.visible)
+  
+  // Находим самый быстрый круг среди видимых
+  const fastestLapIndex = data.getFastestVisibleLap()
+  const fastestLapTime = fastestLapIndex !== null ? data.laps[fastestLapIndex].getStats().time : null
+
+  const handleSoloLap = (lapIndex: number) => {
+    // Скрываем все круги
+    onToggleAllLaps(false)
+    // Показываем только выбранный
+    onToggleLap(lapIndex)
+  }
+  
+  const handleToggleAllDisplayed = (checked: boolean) => {
+    // Переключаем только отображаемые круги
+    displayedLaps.forEach(lap => {
+      if (lap.visible !== checked) {
+        onToggleLap(lap.index)
+      }
+    })
+  }
+
+  const toggleFilter = () => {
+    setFilterOutliers(!filterOutliers)
+  }
 
   // Принудительная перерисовка при изменении updateCounter
   useEffect(() => {
@@ -72,11 +106,18 @@ export function LapsPanel({ data, onToggleLap, onToggleAllLaps, updateCounter }:
         {!collapsed && (
           <>
             <h3>🏁 Laps ({data.laps.length})</h3>
+            <button
+              className="filter-button"
+              onClick={toggleFilter}
+              title={filterOutliers ? "Показать все круги" : "Скрыть некорректные круги"}
+            >
+              {filterOutliers ? <FilterIcon size={18} /> : <FilterOffIcon size={18} />}
+            </button>
             <label className="lap-checkbox-all" onClick={(e) => e.stopPropagation()}>
               <input
                 type="checkbox"
-                checked={data.laps.every(lap => lap.visible)}
-                onChange={(e) => onToggleAllLaps(e.target.checked)}
+                checked={allDisplayedSelected}
+                onChange={(e) => handleToggleAllDisplayed(e.target.checked)}
               />
               <span>All</span>
             </label>
@@ -89,6 +130,7 @@ export function LapsPanel({ data, onToggleLap, onToggleAllLaps, updateCounter }:
           <table className="laps-table-side">
             <thead>
               <tr>
+                <th className="col-solo"></th>
                 <th className="col-checkbox"></th>
                 <th className="col-color"></th>
                 <th className="col-lap">Lap</th>
@@ -98,11 +140,31 @@ export function LapsPanel({ data, onToggleLap, onToggleAllLaps, updateCounter }:
               </tr>
             </thead>
             <tbody>
-              {data.laps.map((lap) => {
+              {displayedLaps.map((lap) => {
                 const stats = lap.getStats()
+                const isFastest = lap.visible && lap.index === fastestLapIndex
+                
+                // Вычисляем дельту времени
+                let timeDelta = null
+                let timeDeltaColor = ''
+                if (lap.visible && fastestLapTime !== null && stats.time > 0 && !isFastest) {
+                  const deltaMs = stats.time - fastestLapTime
+                  const deltaSec = deltaMs / 1000
+                  timeDelta = deltaSec >= 0 ? `+${deltaSec.toFixed(3)}` : deltaSec.toFixed(3)
+                  timeDeltaColor = deltaMs < 0 ? '#00ff00' : '#ff6666'
+                }
                 
                 return (
                   <tr key={lap.index} className={lap.visible ? 'active' : ''}>
+                    <td className="col-solo">
+                      <button
+                        className="solo-button"
+                        onClick={() => handleSoloLap(lap.index)}
+                        title="Solo этот круг"
+                      >
+                        s
+                      </button>
+                    </td>
                     <td className="col-checkbox">
                       <input
                         type="checkbox"
@@ -116,9 +178,19 @@ export function LapsPanel({ data, onToggleLap, onToggleAllLaps, updateCounter }:
                         style={{ backgroundColor: lap.color }}
                       ></span>
                     </td>
-                    <td className="col-lap">{stats.name}</td>
+                    <td className="col-lap">
+                      {isFastest && <span style={{ marginRight: '4px' }}>🏁</span>}
+                      {stats.name}
+                    </td>
                     <td className="col-distance">{(stats.distance / 1000).toFixed(2)} km</td>
-                    <td className="col-time">{stats.timeFormatted}</td>
+                    <td className="col-time">
+                      <div>{stats.timeFormatted}</div>
+                      {timeDelta && (
+                        <div className="time-delta" style={{ color: timeDeltaColor }}>
+                          {timeDelta}
+                        </div>
+                      )}
+                    </td>
                     <td className="col-speed">{stats.maxSpeed} km/h</td>
                   </tr>
                 )
