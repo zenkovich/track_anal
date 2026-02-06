@@ -1,0 +1,244 @@
+/* Боковая панель кругов (справа) */
+.laps-panel-side {
+  position: relative;
+  background: white;
+  border-left: 1px solid #e0e0e0;
+  box-shadow: -2px 0 4px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  flex-shrink: 0;
+  transition: width 0.3s ease;
+}
+
+.laps-panel-side.collapsed {
+  width: 40px !important;
+}
+
+/* Resizer слева от панели */
+.laps-resizer-side {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #e0e0e0;
+  cursor: ew-resize;
+  z-index: 10;
+}
+
+.laps-resizer-side:hover {
+  background: #667eea;
+}
+
+.laps-resizer-handle-side {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 3px;
+  height: 40px;
+  background: #999;
+  border-radius: 2px;
+}
+
+.laps-resizer-side:hover .laps-resizer-handle-side {
+  background: white;
+}
+
+/* Заголовок панели */
+.laps-panel-header-side {
+  padding: 0.75rem 1rem;
+  background: linear-gradient(to bottom, #f8f9fa, #ffffff);
+  border-bottom: 2px solid #d0d0d0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 50px;
+  flex-shrink: 0;
+}
+
+.laps-panel-side.collapsed .laps-panel-header-side {
+  justify-content: center;
+  padding: 0.5rem;
+}
+
+.laps-panel-header-side h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #333;
+  flex: 1;
+}
+
+.collapse-button-side {
+  background: none;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+  color: #666;
+  padding: 0.3rem;
+  transition: all 0.2s;
+  line-height: 1;
+  border-radius: 4px;
+}
+
+.collapse-button-side:hover {
+  color: #333;
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.lap-checkbox-all {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  margin: 0;
+  font-size: 0.85rem;
+  color: #333;
+  font-weight: 600;
+  padding: 0.3rem 0.6rem;
+  background: rgba(102, 126, 234, 0.1);
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.lap-checkbox-all:hover {
+  background: rgba(102, 126, 234, 0.15);
+}
+
+.lap-checkbox-all input[type="checkbox"] {
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+}
+
+/* Содержимое панели */
+.laps-panel-content-side {
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Таблица кругов */
+.laps-table-side {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.laps-table-side thead {
+  position: sticky;
+  top: 0;
+  background: #f8f9fa;
+  z-index: 1;
+}
+
+.laps-table-side th {
+  padding: 0.5rem 0.4rem;
+  font-weight: 600;
+  color: #333;
+  border-bottom: 2px solid #d0d0d0;
+  white-space: nowrap;
+  font-size: 0.75rem;
+}
+
+.laps-table-side tbody tr {
+  transition: background 0.15s;
+}
+
+.laps-table-side tbody tr:hover {
+  background: #f0f0f0;
+}
+
+.laps-table-side tbody tr.active {
+  background: #e8f4fd;
+}
+
+.laps-table-side td {
+  padding: 0.5rem 0.4rem;
+  border-bottom: 1px solid #e8e8e8;
+  white-space: nowrap;
+  color: #222;
+  font-weight: 500;
+}
+
+/* Колонка чекбокса */
+.col-checkbox {
+  width: 40px;
+  text-align: center;
+}
+
+.col-checkbox input[type="checkbox"] {
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+}
+
+/* Колонка цвета */
+.col-color {
+  width: 30px;
+  text-align: center;
+}
+
+.lap-color-box {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: 2px solid #000;
+}
+
+/* Колонка Lap */
+.col-lap {
+  text-align: left;
+  font-weight: 600;
+  color: #111;
+}
+
+/* Колонка Distance */
+.col-distance {
+  text-align: right;
+}
+
+/* Колонка Time */
+.col-time {
+  text-align: right;
+}
+
+/* Колонка Speed */
+.col-speed {
+  text-align: right;
+}
+
+/* Адаптивность */
+@media (max-width: 1024px) {
+  .laps-panel-side {
+    width: 320px !important;
+  }
+
+  .laps-table-side {
+    font-size: 0.8rem;
+  }
+
+  .laps-table-side th,
+  .laps-table-side td {
+    padding: 0.4rem 0.3rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .laps-panel-side {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 100;
+    box-shadow: -4px 0 8px rgba(0, 0, 0, 0.15);
+  }
+
+  .laps-panel-side.collapsed {
+    position: relative;
+  }
+}

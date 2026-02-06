@@ -1,0 +1,284 @@
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.App {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f5f5f5;
+  overflow: hidden;
+}
+
+/* Панель управления */
+.control-panel {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.control-panel-content {
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 0.5rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.control-panel h1 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.compact-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  background: rgba(255, 255, 255, 0.15);
+  padding: 0.35rem 0.75rem;
+  border-radius: 4px;
+  flex-wrap: wrap;
+}
+
+.info-item {
+  white-space: nowrap;
+}
+
+.info-item strong {
+  font-weight: 600;
+  margin-right: 0.25rem;
+}
+
+.info-divider {
+  opacity: 0.5;
+  margin: 0 0.25rem;
+}
+
+.control-buttons {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.control-button-icon {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 1.1rem;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  background: white;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.control-button-icon:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.control-button-icon:active {
+  transform: scale(0.98);
+}
+
+/* Основное содержимое (вертикальный layout для стартового экрана) */
+.App-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Основное содержимое (горизонтальный layout для визуализации) */
+.App-main-horizontal {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Приветственное сообщение */
+.welcome-message {
+  text-align: center;
+  padding: 2rem 1rem;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin: 1rem;
+  overflow-y: auto;
+}
+
+.welcome-icon {
+  font-size: 3rem;
+  margin-bottom: 0.75rem;
+}
+
+.welcome-message h2 {
+  color: #333;
+  margin-bottom: 0.75rem;
+  font-size: 1.5rem;
+}
+
+.welcome-message p {
+  color: #666;
+  font-size: 1rem;
+  margin: 0.4rem 0;
+}
+
+.file-info {
+  color: #999 !important;
+  font-size: 0.85rem !important;
+  font-style: italic;
+  margin-bottom: 1rem !important;
+}
+
+.features {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+.feature {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.6rem 1rem;
+  background: #f8f9fa;
+  border-radius: 6px;
+  color: #555;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.feature-icon {
+  font-size: 1.2rem;
+}
+
+/* Загрузка */
+.loading {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: #666;
+  margin: 1rem;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 0.75rem;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Сообщение об ошибке */
+.error-message {
+  background: #fee;
+  color: #c33;
+  padding: 1rem;
+  border-radius: 6px;
+  border-left: 4px solid #c33;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: 500;
+  margin: 1rem;
+  font-size: 0.9rem;
+}
+
+.error-icon {
+  font-size: 1.2rem;
+}
+
+/* Контейнер визуализации - на всю доступную площадь */
+.visualization-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Адаптивность */
+@media (max-width: 1024px) {
+  .header-left {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
+  }
+
+  .compact-info {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+  }
+
+}
+
+@media (max-width: 768px) {
+  .control-panel h1 {
+    font-size: 1.1rem;
+  }
+
+  .header-left {
+    width: 100%;
+  }
+
+  .compact-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.2rem;
+    width: 100%;
+    font-size: 0.75rem;
+  }
+
+  .info-divider {
+    display: none;
+  }
+
+  .features {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+}
