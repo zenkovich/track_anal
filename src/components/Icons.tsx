@@ -131,7 +131,7 @@ export const TopNIcon = ({ size = 20, color = 'currentColor', number = 2 }: Icon
   </svg>
 )
 
-export const FilterIcon = ({ size = 20, color = 'currentColor' }: IconProps) => (
+export const FilterIcon = ({ size = 20 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     {/* Воронка фильтра залитая оранжевым (активная) */}
     <path 
@@ -158,12 +158,86 @@ export const FilterOffIcon = ({ size = 20, color = 'currentColor' }: IconProps) 
   </svg>
 )
 
-export const FilterSmallIcon = ({ size = 12, color = '#808080' }: IconProps) => (
+export const VelocityIcon = ({ size = 20, color = 'currentColor' }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    {/* Спидометр со стрелкой */}
+    <path 
+      d="M12 4C7.58172 4 4 7.58172 4 12C4 13.8919 4.66505 15.6268 5.77735 17M12 4C16.4183 4 20 7.58172 20 12C20 13.8919 19.335 15.6268 18.2226 17M12 4V8" 
+      stroke={color} 
+      strokeWidth="2.5" 
+      strokeLinecap="round" 
+      strokeLinejoin="round"
+    />
+    <circle cx="12" cy="12" r="2" fill={color} />
+    <path 
+      d="M12 12L16 8" 
+      stroke={color} 
+      strokeWidth="2.5" 
+      strokeLinecap="round"
+    />
+    <path 
+      d="M4 17H20" 
+      stroke={color} 
+      strokeWidth="2.5" 
+      strokeLinecap="round"
+    />
+  </svg>
+)
+
+export const TimeIcon = ({ size = 20, color = 'currentColor' }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    {/* Часы */}
+    <circle 
+      cx="12" 
+      cy="12" 
+      r="9" 
+      stroke={color} 
+      strokeWidth="2.5" 
+      strokeLinecap="round" 
+      strokeLinejoin="round"
+    />
+    <path 
+      d="M12 6V12L16 14" 
+      stroke={color} 
+      strokeWidth="2.5" 
+      strokeLinecap="round" 
+      strokeLinejoin="round"
+    />
+  </svg>
+)
+
+export const GraphIcon = ({ size = 20, color = 'currentColor' }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    {/* График с линиями */}
+    <path 
+      d="M3 3V21H21" 
+      stroke={color} 
+      strokeWidth="2" 
+      strokeLinecap="round" 
+      strokeLinejoin="round"
+    />
+    <path 
+      d="M7 14L10 11L13 14L17 8L20 11" 
+      stroke={color} 
+      strokeWidth="2.5" 
+      strokeLinecap="round" 
+      strokeLinejoin="round"
+    />
+    {/* Точки на линии */}
+    <circle cx="7" cy="14" r="2" fill={color} />
+    <circle cx="10" cy="11" r="2" fill={color} />
+    <circle cx="13" cy="14" r="2" fill={color} />
+    <circle cx="17" cy="8" r="2" fill={color} />
+    <circle cx="20" cy="11" r="2" fill={color} />
+  </svg>
+)
+
+export const FilterSmallIcon = ({ size = 12 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     {/* Маленькая воронка для индикации фильтрованного круга */}
     <path 
       d="M4 4H20L14 11V17L10 19V11L4 4Z" 
-      stroke={color} 
+      stroke="#808080" 
       strokeWidth="2" 
       strokeLinecap="round" 
       strokeLinejoin="round"

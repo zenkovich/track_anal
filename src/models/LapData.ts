@@ -3,6 +3,7 @@
  */
 
 import { VBODataRow } from './types'
+import { IChart, ChartType, createChart, CHART_TYPES } from './charts'
 
 /**
  * Статистика круга
@@ -37,6 +38,9 @@ export class LapData {
   
   /** Ссылка на исходный массив всех точек (для расчета времени) */
   private readonly allRows?: VBODataRow[]
+  
+  /** Графики для этого круга */
+  private _charts: Map<ChartType, IChart> = new Map()
 
   constructor(
     index: number,
@@ -55,6 +59,35 @@ export class LapData {
     
     // Инициализируем время и дистанцию от начала круга для каждой точки
     this.initializeLapParameters()
+    
+    // Рассчитываем все графики
+    this.calculateCharts()
+  }
+  
+  /**
+   * Рассчитывает все типы графиков для этого круга
+   */
+  private calculateCharts(): void {
+    // Создаем и рассчитываем график для каждого типа
+    CHART_TYPES.forEach(chartType => {
+      const chart = createChart(chartType.type)
+      chart.calculate(this)
+      this._charts.set(chartType.type, chart)
+    })
+  }
+  
+  /**
+   * Получает график по типу
+   */
+  getChart(type: ChartType): IChart | undefined {
+    return this._charts.get(type)
+  }
+  
+  /**
+   * Получает все графики
+   */
+  getAllCharts(): Map<ChartType, IChart> {
+    return this._charts
   }
   
   /**

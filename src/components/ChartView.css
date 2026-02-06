@@ -1,0 +1,13 @@
+.chart-view {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background: #1a1a1a;
+  overflow: hidden;
+}
+
+.chart-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import './App.css'
 import { TrackVisualizer } from './components/TrackVisualizer'
 import { LapsPanel } from './components/LapsPanel'
+import { ChartsPanel } from './components/ChartsPanel'
 import { VBOData } from './models/VBOData'
 import { VBOParser } from './utils/vboParser'
 import { FolderIcon, MapIcon, ResetIcon, RacingFlagIcon, SettingsIcon } from './components/Icons'
@@ -150,8 +151,8 @@ function App() {
         </div>
       </header>
 
-      {/* Основное содержимое с панелью справа */}
-      <main className={vboData ? "App-main-horizontal" : "App-main"}>
+      {/* Основное содержимое */}
+      <main className={vboData ? "App-main-with-data" : "App-main"}>
         {loading && (
           <div className="loading">
             <div className="spinner"></div>
@@ -189,30 +190,36 @@ function App() {
 
         {vboData && (
           <>
-            <div className="visualization-container">
-              <TrackVisualizer 
-                data={vboData} 
-                showTiles={showTiles}
-                onToggleTiles={handleToggleTiles}
-                onReset={handleReset}
-                resetKey={resetTrigger}
-                showSettingsPanel={showSettingsPanel}
+            <div className="track-and-laps-container">
+              <div className="visualization-container">
+                <TrackVisualizer 
+                  data={vboData} 
+                  showTiles={showTiles}
+                  onToggleTiles={handleToggleTiles}
+                  onReset={handleReset}
+                  resetKey={resetTrigger}
+                  showSettingsPanel={showSettingsPanel}
+                  updateCounter={updateCounter}
+                  tolerancePercent={tolerancePercent}
+                  onToleranceChange={setTolerancePercent}
+                  lapOrder={lapOrder}
+                />
+              </div>
+              <LapsPanel
+                data={vboData}
+                onToggleLap={toggleLap}
+                onToggleAllLaps={toggleAllLaps}
                 updateCounter={updateCounter}
                 tolerancePercent={tolerancePercent}
-                onToleranceChange={setTolerancePercent}
-                lapOrder={lapOrder}
+                sortField={sortField}
+                sortDirection={sortDirection}
+                onSortChange={handleSortChange}
+                onLapOrderChange={setLapOrder}
               />
             </div>
-            <LapsPanel
+            <ChartsPanel
               data={vboData}
-              onToggleLap={toggleLap}
-              onToggleAllLaps={toggleAllLaps}
               updateCounter={updateCounter}
-              tolerancePercent={tolerancePercent}
-              sortField={sortField}
-              sortDirection={sortDirection}
-              onSortChange={handleSortChange}
-              onLapOrderChange={setLapOrder}
             />
           </>
         )}

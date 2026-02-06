@@ -128,13 +128,22 @@ html, body, #root {
   min-height: 0;
 }
 
-/* Основное содержимое (горизонтальный layout для визуализации) */
-.App-main-horizontal {
+/* Основное содержимое (с данными - вертикальный layout) */
+.App-main-with-data {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Контейнер для трека и панели кругов (горизонтально) */
+.track-and-laps-container {
   flex: 1;
   display: flex;
   flex-direction: row;
-  padding: 0;
-  margin: 0;
   overflow: hidden;
   min-height: 0;
 }

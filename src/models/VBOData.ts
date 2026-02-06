@@ -21,7 +21,16 @@ export class VBOData {
   /** Линия старт/финиш (если определена) */
   readonly startFinish?: StartFinishLine
   
-  /** Круги трека с параметрами и видимостью */
+  /** 
+   * Круги трека с параметрами и видимостью
+   * 
+   * ВАЖНО: Видимость кругов (lap.visible) - это общее состояние для всего приложения
+   * Все компоненты используют это состояние:
+   * - LapsPanel: чекбоксы управляют lap.visible
+   * - TrackVisualizer: отрисовывает только круги с lap.visible=true
+   * - ChartsPanel: отображает графики только для кругов с lap.visible=true
+   * - Tooltip: показывает данные только для кругов с lap.visible=true
+   */
   private _laps: LapData[]
 
   constructor(
