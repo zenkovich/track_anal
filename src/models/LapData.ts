@@ -1,0 +1,195 @@
+/**
+ * Модель данных круга (Lap) с параметрами и видимостью
+ */
+
+import { VBODataRow } from './types'
+
+/**
+ * Статистика круга
+ */
+export interface LapStats {
+  name: string          // Имя круга (например, "Lap 1")
+  distance: number      // Дистанция (метры)
+  time: number          // Время (миллисекунды)
+  maxSpeed: number      // Максимальная скорость (км/ч)
+  timeFormatted: string // Время в формате MM:SS.mmm
+}
+
+/**
+ * Данные одного круга с точками и параметрами
+ */
+export class LapData {
+  /** Индекс круга (0-based) */
+  readonly index: number
+  
+  /** Точки трека этого круга */
+  readonly rows: VBODataRow[]
+  
+  /** Видимость круга на карте */
+  visible: boolean = true
+  
+  /** Цвет круга */
+  readonly color: string
+  
+  /** Индексы в исходном массиве для расчета времени */
+  readonly startIdx: number
+  readonly endIdx: number
+  
+  /** Ссылка на исходный массив всех точек (для расчета времени) */
+  private readonly allRows?: VBODataRow[]
+
+  constructor(
+    index: number,
+    rows: VBODataRow[],
+    color: string,
+    startIdx: number = 0,
+    endIdx: number = 0,
+    allRows?: VBODataRow[]
+  ) {
+    this.index = index
+    this.rows = rows
+    this.color = color
+    this.startIdx = startIdx
+    this.endIdx = endIdx
+    this.allRows = allRows
+  }
+
+  /**
+   * Вычисляет статистику круга
+   */
+  getStats(): LapStats {
+    // Расчет дистанции (сумма всех distance)
+    let distance = 0
+    for (const row of this.rows) {
+      if (row.distance) {
+        distance += row.distance
+      }
+    }
+
+    // Расчет времени (разница между первой и последней точкой)
+    const timeMs = this.calculateTimeMs()
+
+    // Максимальная скорость
+    let maxSpeed = 0
+    for (const row of this.rows) {
+      if (row.velocity > maxSpeed) {
+        maxSpeed = row.velocity
+      }
+    }
+
+    return {
+      name: `Lap ${this.index + 1}`,
+      distance: Math.round(distance),
+      time: timeMs,
+      maxSpeed: Math.round(maxSpeed),
+      timeFormatted: this.formatTime(timeMs)
+    }
+  }
+
+  /**
+   * Вычисляет время круга в миллисекундах
+   */
+  private calculateTimeMs(): number {
+    // Если есть исходный массив и индексы, используем их
+    if (this.allRows && this.startIdx >= 0 && this.endIdx > this.startIdx) {
+      const firstTimeStr = this.allRows[this.startIdx]?.time
+      const lastTimeStr = this.allRows[this.endIdx]?.time
+      
+      if (firstTimeStr && lastTimeStr) {
+        const firstTime = this.parseTime(firstTimeStr)
+        const lastTime = this.parseTime(lastTimeStr)
+        return Math.max(0, lastTime - firstTime)
+      }
+    }
+    
+    // Fallback: используем первую и последнюю точку круга
+    if (this.rows.length < 2) return 0
+
+    const firstTimeStr = this.rows[0].time
+    const lastTimeStr = this.rows[this.rows.length - 1].time
+    
+    const firstTime = this.parseTime(firstTimeStr)
+    const lastTime = this.parseTime(lastTimeStr)
+    
+    return Math.max(0, lastTime - firstTime)
+  }
+
+  /**
+   * Парсит время из строки формата HH:MM:SS.mmm в миллисекунды
+   */
+  private parseTime(timeStr: string): number {
+    if (!timeStr) return 0
+    
+    const parts = timeStr.split(':')
+    if (parts.length !== 3) return 0
+
+    const hh = parseInt(parts[0], 10)
+    const mm = parseInt(parts[1], 10)
+    const ss = parseFloat(parts[2])
+
+    if (isNaN(hh) || isNaN(mm) || isNaN(ss)) return 0
+
+    return (hh * 3600 + mm * 60 + ss) * 1000
+  }
+
+  /**
+   * Форматирует миллисекунды в строку MM:SS.mmm
+   */
+  private formatTime(ms: number): string {
+    if (isNaN(ms) || ms < 0) return '00:00.000'
+    
+    const totalSeconds = ms / 1000
+    const minutes = Math.floor(totalSeconds / 60)
+    const seconds = Math.floor(totalSeconds % 60)
+    const milliseconds = Math.floor((totalSeconds % 1) * 1000)
+
+    const mm = minutes.toString().padStart(2, '0')
+    const ss = seconds.toString().padStart(2, '0')
+    const mmm = milliseconds.toString().padStart(3, '0')
+
+    return `${mm}:${ss}.${mmm}`
+  }
+
+  /**
+   * Переключает видимость круга
+   */
+  toggleVisibility(): void {
+    this.visible = !this.visible
+  }
+
+  /**
+   * Устанавливает видимость круга
+   */
+  setVisibility(visible: boolean): void {
+    this.visible = visible
+  }
+}
+
+/**
+ * Палитра цветов для кругов (яркие, различимые цвета)
+ */
+export const LAP_COLORS = [
+  '#FF6B00', // ярко-оранжевый
+  '#00FFD1', // неоновый циан
+  '#FF0080', // неоновый розовый
+  '#FFD700', // золотой
+  '#7FFF00', // неоновый лайм
+  '#FF1493', // глубокий розовый
+  '#00E5FF', // яркий голубой
+  '#FFB000', // янтарный
+  '#B026FF', // неоновый фиолетовый
+  '#00FF7F', // весенний зеленый
+  '#FF4500', // огненный оранжевый
+  '#39FF14', // неоновый зеленый
+  '#FF69B4', // горячий розовый
+  '#00BFFF', // глубокий небесно-голубой
+  '#FFAA00', // оранжево-желтый
+  '#DA70D6', // орхидея
+]
+
+/**
+ * Получает цвет для круга по индексу
+ */
+export function getLapColor(lapIndex: number): string {
+  return LAP_COLORS[lapIndex % LAP_COLORS.length]
+}

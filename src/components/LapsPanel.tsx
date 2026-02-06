@@ -1,49 +1,23 @@
 import { useState, useEffect } from 'react'
-import { VBOData } from '../utils/vboParser'
+import { VBOData } from '../models/VBOData'
 import './LapsPanel.css'
 
 interface LapsPanelProps {
   data: VBOData
-  visibleLaps: Set<number>
   onToggleLap: (lapIdx: number) => void
   onToggleAllLaps: (show: boolean) => void
+  updateCounter: number // Для принудительной перерисовки
 }
 
-export function LapsPanel({ data, visibleLaps, onToggleLap, onToggleAllLaps }: LapsPanelProps) {
+export function LapsPanel({ data, onToggleLap, onToggleAllLaps, updateCounter }: LapsPanelProps) {
   const [panelWidth, setPanelWidth] = useState(350)
   const [isResizing, setIsResizing] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
 
-  const lapColors = [
-    '#ff0000', '#00ff00', '#0000ff', '#ffff00',
-    '#ff00ff', '#00ffff', '#ff8800', '#8800ff'
-  ]
-
-  const getLapStats = (lap: typeof data.laps[0]) => {
-    const totalDistance = lap.rows.reduce((sum, row) => sum + (row.distance || 0), 0)
-    const maxVelocity = Math.max(...lap.rows.map(row => row.velocity))
-    
-    const firstTime = lap.rows[0]?.time || '00:00:00'
-    const lastTime = lap.rows[lap.rows.length - 1]?.time || '00:00:00'
-    
-    const parseTime = (timeStr: string): number => {
-      const parts = timeStr.split(':')
-      return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseFloat(parts[2])
-    }
-    
-    const totalTime = parseTime(lastTime) - parseTime(firstTime)
-    
-    const minutes = Math.floor(totalTime / 60)
-    const seconds = Math.floor(totalTime % 60)
-    const milliseconds = Math.floor((totalTime % 1) * 1000)
-    const formattedTime = `${minutes}:${seconds.toString().padStart(2, '0')}:${milliseconds.toString().padStart(3, '0')}`
-    
-    return {
-      distance: (totalDistance / 1000).toFixed(2),
-      maxSpeed: maxVelocity.toFixed(1),
-      time: formattedTime
-    }
-  }
+  // Принудительная перерисовка при изменении updateCounter
+  useEffect(() => {
+    // Просто триггерим ререндер
+  }, [updateCounter])
 
   const handleResizerMouseDown = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -101,7 +75,7 @@ export function LapsPanel({ data, visibleLaps, onToggleLap, onToggleAllLaps }: L
             <label className="lap-checkbox-all" onClick={(e) => e.stopPropagation()}>
               <input
                 type="checkbox"
-                checked={visibleLaps.size === data.laps.length}
+                checked={data.laps.every(lap => lap.visible)}
                 onChange={(e) => onToggleAllLaps(e.target.checked)}
               />
               <span>All</span>
@@ -124,28 +98,27 @@ export function LapsPanel({ data, visibleLaps, onToggleLap, onToggleAllLaps }: L
               </tr>
             </thead>
             <tbody>
-              {data.laps.map((lap, idx) => {
-                const color = lapColors[idx % lapColors.length]
-                const stats = getLapStats(lap)
+              {data.laps.map((lap) => {
+                const stats = lap.getStats()
                 
                 return (
-                  <tr key={idx} className={visibleLaps.has(idx) ? 'active' : ''}>
+                  <tr key={lap.index} className={lap.visible ? 'active' : ''}>
                     <td className="col-checkbox">
                       <input
                         type="checkbox"
-                        checked={visibleLaps.has(idx)}
-                        onChange={() => onToggleLap(idx)}
+                        checked={lap.visible}
+                        onChange={() => onToggleLap(lap.index)}
                       />
                     </td>
                     <td className="col-color">
                       <span 
                         className="lap-color-box"
-                        style={{ backgroundColor: color }}
+                        style={{ backgroundColor: lap.color }}
                       ></span>
                     </td>
-                    <td className="col-lap">Lap {idx + 1}</td>
-                    <td className="col-distance">{stats.distance} km</td>
-                    <td className="col-time">{stats.time}</td>
+                    <td className="col-lap">{stats.name}</td>
+                    <td className="col-distance">{(stats.distance / 1000).toFixed(2)} km</td>
+                    <td className="col-time">{stats.timeFormatted}</td>
                     <td className="col-speed">{stats.maxSpeed} km/h</td>
                   </tr>
                 )

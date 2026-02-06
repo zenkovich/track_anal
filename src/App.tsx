@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import './App.css'
 import { TrackVisualizer } from './components/TrackVisualizer'
 import { LapsPanel } from './components/LapsPanel'
-import { VBOData, VBOParser } from './utils/vboParser'
-import { FolderIcon, MapIcon, ResetIcon, BugIcon, SpeedometerIcon, RacingFlagIcon } from './components/Icons'
+import { VBOData } from './models/VBOData'
+import { VBOParser } from './utils/vboParser'
+import { FolderIcon, MapIcon, ResetIcon, BugIcon, RacingFlagIcon } from './components/Icons'
 
 function App() {
   const [vboData, setVboData] = useState<VBOData | null>(null)
@@ -11,8 +12,8 @@ function App() {
   const [loading, setLoading] = useState<boolean>(false)
   const [showTiles, setShowTiles] = useState<boolean>(true)
   const [resetTrigger, setResetTrigger] = useState<number>(0)
-  const [visibleLaps, setVisibleLaps] = useState<Set<number>>(new Set())
   const [showDebugPanel, setShowDebugPanel] = useState<boolean>(false)
+  const [updateCounter, setUpdateCounter] = useState<number>(0) // Для принудительной перерисовки
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -51,51 +52,26 @@ function App() {
     setResetTrigger(prev => prev + 1)
   }
 
-  // Инициализация видимых кругов при загрузке данных
-  useEffect(() => {
-    if (vboData) {
-      setVisibleLaps(new Set(vboData.laps.map((_, idx) => idx)))
-    }
-  }, [vboData])
-
   const toggleAllLaps = (show: boolean) => {
     if (!vboData) return
-    if (show) {
-      setVisibleLaps(new Set(vboData.laps.map((_, idx) => idx)))
-    } else {
-      setVisibleLaps(new Set())
-    }
+    vboData.setAllLapsVisibility(show)
+    setUpdateCounter(prev => prev + 1) // Принудительная перерисовка
   }
 
   const toggleLap = (lapIdx: number) => {
-    setVisibleLaps(prev => {
-      const newSet = new Set(prev)
-      if (newSet.has(lapIdx)) {
-        newSet.delete(lapIdx)
-      } else {
-        newSet.add(lapIdx)
-      }
-      return newSet
-    })
+    if (!vboData) return
+    vboData.toggleLapVisibility(lapIdx)
+    setUpdateCounter(prev => prev + 1) // Принудительная перерисовка
   }
 
 
   // Извлекаем нужные метаданные
   const getCompactInfo = (data: VBOData) => {
-    let model = ''
-    let time = ''
-
-    data.header.comments.forEach(comment => {
-      if (comment.startsWith('Model:')) {
-        model = comment.replace('Model:', '').trim()
-      } else if (comment.startsWith('UTC Date Started:')) {
-        time = comment.replace('UTC Date Started:', '').trim()
-      }
-    })
-
+    const metadata = data.getMetadata()
+    
     return {
-      model: model || 'N/A',
-      time: time || 'N/A',
+      model: metadata['Model'] || 'N/A',
+      time: metadata['UTC Date Started'] || 'N/A',
       totalPoints: data.rows.length
     }
   }
@@ -193,11 +169,11 @@ function App() {
                 <span>Визуализация GPS-трека</span>
               </div>
               <div className="feature">
-                <span className="feature-icon"><SpeedometerIcon size={20} /></span>
+                <span className="feature-icon"><MapIcon size={20} /></span>
                 <span>Зум и панорамирование мышкой</span>
               </div>
               <div className="feature">
-                <span className="feature-icon"><SpeedometerIcon size={20} /></span>
+                <span className="feature-icon"><MapIcon size={20} /></span>
                 <span>Обработка больших файлов (30-50k точек)</span>
               </div>
             </div>
@@ -213,15 +189,15 @@ function App() {
                 onToggleTiles={handleToggleTiles}
                 onReset={handleReset}
                 resetKey={resetTrigger}
-                visibleLaps={visibleLaps}
                 showDebugPanel={showDebugPanel}
+                updateCounter={updateCounter}
               />
             </div>
             <LapsPanel
               data={vboData}
-              visibleLaps={visibleLaps}
               onToggleLap={toggleLap}
               onToggleAllLaps={toggleAllLaps}
+              updateCounter={updateCounter}
             />
           </>
         )}

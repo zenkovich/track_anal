@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { TileCache, calculateZoom, getTilesForBounds, tileToLatLng } from '../utils/tiles'
-import { VBOData, metersToGps } from '../utils/vboParser'
+import { VBOData } from '../models/VBOData'
+import { metersToGps } from '../utils/vboParser'
 import './TrackVisualizer.css'
 
 interface TrackVisualizerProps {
@@ -9,8 +10,8 @@ interface TrackVisualizerProps {
   onToggleTiles?: () => void
   onReset?: () => void
   resetKey?: number
-  visibleLaps?: Set<number>
   showDebugPanel?: boolean
+  updateCounter?: number // Для принудительной перерисовки
 }
 
 interface ViewState {
@@ -19,7 +20,7 @@ interface ViewState {
   scale: number
 }
 
-export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKey, visibleLaps: visibleLapsProp, showDebugPanel: showDebugPanelProp = false }: TrackVisualizerProps) {
+export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKey, showDebugPanel: showDebugPanelProp = false, updateCounter = 0 }: TrackVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const animationFrameRef = useRef<number | null>(null)
@@ -49,7 +50,6 @@ export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKe
   const tileCacheRef = useRef(new TileCache('google'))
   
   const showTiles = showTilesProp
-  const visibleLaps = visibleLapsProp || new Set(data.laps.map((_, idx) => idx))
   const showDebugPanel = showDebugPanelProp
 
   useEffect(() => {
@@ -406,30 +406,12 @@ export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKe
     ctx.shadowColor = 'transparent'
     ctx.shadowBlur = 0
 
-    const lapColors = [
-      '#FF6B00', // ярко-оранжевый
-      '#00FFD1', // неоновый циан
-      '#FF0080', // неоновый розовый
-      '#FFD700', // золотой
-      '#7FFF00', // неоновый лайм
-      '#FF1493', // глубокий розовый
-      '#00E5FF', // яркий голубой
-      '#FFB000', // янтарный
-      '#B026FF', // неоновый фиолетовый
-      '#00FF7F', // весенний зеленый
-      '#FF4500', // огненный оранжевый
-      '#39FF14', // неоновый зеленый
-      '#FF69B4', // горячий розовый
-      '#00BFFF', // глубокий небесно-голубой
-      '#FFAA00', // оранжево-желтый
-      '#DA70D6', // орхидея
-    ]
-
-    data.laps.forEach((lap, lapIdx) => {
+    // Отрисовка видимых кругов
+    data.laps.forEach((lap) => {
       // Проверяем, виден ли этот круг
-      if (!visibleLaps.has(lapIdx)) return
+      if (!lap.visible) return
       
-      ctx.strokeStyle = lapColors[lapIdx % lapColors.length]
+      ctx.strokeStyle = lap.color
       ctx.beginPath()
       const firstRow = lap.rows[0]
       ctx.moveTo(toLocalX(firstRow.long), toLocalY(firstRow.lat))
@@ -574,7 +556,7 @@ export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKe
         cancelAnimationFrame(animationFrameRef.current)
       }
     }
-  }, [data.rows, dimensions, viewState, baseParams, debugInfo, tiles, visibleLaps, showTileBorders, showTileLabels, showStartFinishDebug])
+  }, [data.rows, dimensions, viewState, baseParams, debugInfo, tiles, showTileBorders, showTileLabels, showStartFinishDebug, updateCounter])
 
   return (
     <div className="track-visualizer" ref={containerRef}>
