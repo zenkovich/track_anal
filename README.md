@@ -1,6 +1,6 @@
-# 📊 VBO Track Viewer
+# 🏁 Track Tools
 
-A professional GPS track visualization tool for dragy VBO files. Built with React, TypeScript, and Vite.
+A professional GPS track visualization tool for VBO files. Built with React, TypeScript, and Vite.
 
 ![Demo](demo.png)
 
@@ -46,11 +46,11 @@ npm run preview
 ## 📝 How to Use
 
 1. Click the 📂 **Open File** button in the top toolbar
-2. Select a `.vbo` file (dragy format)
+2. Select a `.vbo` file
 3. The track will be displayed on the map with automatic lap detection
 4. Use the right panel to toggle lap visibility
 5. Mouse wheel to zoom, drag to pan
-6. Click 🐛 for debug information
+6. Click ⚙️ for settings and debug information
 
 ## 🛠 Technologies
 

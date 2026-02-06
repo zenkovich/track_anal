@@ -31,11 +31,15 @@
 }
 
 .track-tooltip-item {
+  padding-bottom: 8px;
   margin-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .track-tooltip-item:last-child {
   margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
 }
 
 .track-tooltip-header {
@@ -43,8 +47,6 @@
   align-items: center;
   gap: 6px;
   margin-bottom: 6px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .track-tooltip-color {
@@ -201,8 +203,8 @@
 
 /* Панель настроек */
 .settings-panel {
-  right: 20px;
-  left: auto;
+  left: 20px;
+  right: auto;
 }
 
 .setting-item {

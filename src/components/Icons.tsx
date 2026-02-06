@@ -91,9 +91,63 @@ export const SettingsIcon = ({ size = 20, color = 'currentColor' }: IconProps) =
   </svg>
 )
 
+export const TopNIcon = ({ size = 20, color = 'currentColor', number = 2 }: IconProps & { number?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    {/* Очень широкий кубок */}
+    <path 
+      d="M5 3H19V13C19 14.0609 18.5786 15.0783 17.8284 15.8284C17.0783 16.5786 16.0609 17 15 17H9C7.93913 17 6.92172 16.5786 6.17157 15.8284C5.42143 15.0783 5 14.0609 5 13V3Z" 
+      stroke={color} 
+      strokeWidth="1.6" 
+      strokeLinecap="round" 
+      strokeLinejoin="round"
+    />
+    {/* Ручки кубка */}
+    <path 
+      d="M5 6H3C3 7 3.5 8.5 4.5 9.5C5 10 6 10.5 7 10.5M19 6H21C21 7 20.5 8.5 19.5 9.5C19 10 18 10.5 17 10.5" 
+      stroke={color} 
+      strokeWidth="1.6" 
+      strokeLinecap="round" 
+      strokeLinejoin="round"
+    />
+    {/* Очень компактная ножка */}
+    <path 
+      d="M11 17V20.5H13V17M10 20.5H14M10 22H14" 
+      stroke={color} 
+      strokeWidth="1.6" 
+      strokeLinecap="round" 
+      strokeLinejoin="round"
+    />
+    {/* Максимально крупная цифра */}
+    <text 
+      x="12" 
+      y="13" 
+      textAnchor="middle" 
+      fontSize="16" 
+      fontWeight="900" 
+      fill={color}
+    >
+      {number}
+    </text>
+  </svg>
+)
+
 export const FilterIcon = ({ size = 20, color = 'currentColor' }: IconProps) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    {/* Воронка фильтра */}
+    {/* Воронка фильтра залитая оранжевым (активная) */}
+    <path 
+      d="M4 4H20L14 11V17L10 19V11L4 4Z" 
+      fill="#FF6B00"
+      stroke="#FF6B00" 
+      strokeWidth="2" 
+      strokeLinecap="round" 
+      strokeLinejoin="round"
+    />
+  </svg>
+)
+
+export const FilterOffIcon = ({ size = 20, color = 'currentColor' }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    {/* Воронка фильтра не залитая (неактивная) */}
     <path 
       d="M4 4H20L14 11V17L10 19V11L4 4Z" 
       stroke={color} 
@@ -104,22 +158,16 @@ export const FilterIcon = ({ size = 20, color = 'currentColor' }: IconProps) => 
   </svg>
 )
 
-export const FilterOffIcon = ({ size = 20, color = 'currentColor' }: IconProps) => (
+export const FilterSmallIcon = ({ size = 12, color = '#808080' }: IconProps) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    {/* Воронка фильтра перечеркнутая */}
+    {/* Маленькая воронка для индикации фильтрованного круга */}
     <path 
       d="M4 4H20L14 11V17L10 19V11L4 4Z" 
       stroke={color} 
       strokeWidth="2" 
       strokeLinecap="round" 
       strokeLinejoin="round"
-      opacity="0.3"
-    />
-    <path 
-      d="M3 3L21 21" 
-      stroke={color} 
-      strokeWidth="2.5" 
-      strokeLinecap="round"
+      opacity="0.5"
     />
   </svg>
 )

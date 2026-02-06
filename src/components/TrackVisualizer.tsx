@@ -14,6 +14,7 @@ interface TrackVisualizerProps {
   updateCounter?: number // Для принудительной перерисовки
   tolerancePercent?: number
   onToleranceChange?: (tolerance: number) => void
+  lapOrder?: number[] // Порядок индексов кругов для отображения
 }
 
 interface ViewState {
@@ -42,7 +43,8 @@ export function TrackVisualizer({
   showSettingsPanel: showSettingsPanelProp = false,
   updateCounter = 0,
   tolerancePercent = 15,
-  onToleranceChange
+  onToleranceChange,
+  lapOrder = []
 }: TrackVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -95,40 +97,6 @@ export function TrackVisualizer({
       const bbox = data.boundingBox
       const padding = 40
       
-      const debug: string[] = []
-      debug.push('=== VBO Track Viewer ===')
-      debug.push(`Points: ${data.rows.length}`)
-      
-      // Проверяем несколько точек
-      const p1 = data.rows[0]
-      const p2 = data.rows[Math.floor(data.rows.length / 2)]
-      const p3 = data.rows[data.rows.length - 1]
-      
-      debug.push(`Start: ${p1.lat.toFixed(4)}, ${p1.long.toFixed(4)}`)
-      debug.push(`Mid: ${p2.lat.toFixed(4)}, ${p2.long.toFixed(4)}`)
-      debug.push(`End: ${p3.lat.toFixed(4)}, ${p3.long.toFixed(4)}`)
-      debug.push(`Area: ${(bbox.width * 111).toFixed(2)}km x ${(bbox.height * 111).toFixed(2)}km`)
-      
-      let interpolatedCount = 0
-      data.laps.forEach(lap => {
-        lap.rows.forEach(row => {
-          if (row.isInterpolated) interpolatedCount++
-        })
-      })
-      if (interpolatedCount > 0) {
-        debug.push(`Interpolated points: ${interpolatedCount}`)
-      }
-      
-      // Определяем где мы находимся
-      let location = ''
-      if (p1.lat > 0 && p1.long > 0) location = 'NE (Европа/Азия)'
-      else if (p1.lat > 0 && p1.long < 0) location = 'NW (Америка/Атлантика)'
-      else if (p1.lat < 0 && p1.long > 0) location = 'SE (Африка/Океания)'
-      else location = 'SW (Юж.Америка/Океан)'
-      
-      debug.push(`Location: ${location}`)
-      debug.push(`Laps: ${data.laps.length}`)
-      
       const availableWidth = dimensions.width - 2 * padding
       const availableHeight = dimensions.height - 2 * padding
       
@@ -148,9 +116,7 @@ export function TrackVisualizer({
         dimensions.height
       )
       
-      debug.push(`Tile zoom: ${zoom}`)
       setTileZoom(zoom)
-      setDebugInfo(debug)
       setBaseParams({ baseScale, centerX, centerY })
       
       setViewState({
@@ -465,7 +431,38 @@ export function TrackVisualizer({
         }
       })
       
-      setHoveredPoints(foundPoints)
+      // Сортируем найденные точки согласно порядку из таблицы
+      let sortedPoints = foundPoints
+      if (lapOrder.length > 0 && foundPoints.length > 1) {
+        // Создаем карту позиций для быстрого поиска
+        const orderMap = new Map<number, number>()
+        lapOrder.forEach((lapIndex, position) => {
+          orderMap.set(lapIndex, position)
+        })
+        
+        // Сортируем согласно порядку в таблице
+        sortedPoints = [...foundPoints].sort((a, b) => {
+          const posA = orderMap.get(a.lapIndex)
+          const posB = orderMap.get(b.lapIndex)
+          
+          // Если позиции не найдены, оставляем как есть
+          if (posA === undefined || posB === undefined) {
+            return a.lapIndex - b.lapIndex
+          }
+          
+          return posA - posB
+        })
+        
+        if (showHoverDebug && foundPoints.length > 1) {
+          const before = foundPoints.map(p => `Lap${p.lapIndex}`).join(', ')
+          const after = sortedPoints.map(p => `Lap${p.lapIndex}`).join(', ')
+          console.log(`[Tooltip Sort] Order: [${lapOrder.join(', ')}]`)
+          console.log(`  Before: ${before}`)
+          console.log(`  After: ${after}`)
+        }
+      }
+      
+      setHoveredPoints(sortedPoints)
       setDebugHoverData({
         mouseMeters,
         searchRadius: searchRadiusMeters,
@@ -479,7 +476,7 @@ export function TrackVisualizer({
         console.log(`[Hover] Checked segments: ${checkedSegments.length}, in range: ${checkedSegments.filter(s => s.inRange).length}`)
       }
     }
-  }, [isDragging, dragStart.x, dragStart.y, viewState, baseParams, data, showHoverDebug, updateCounter])
+  }, [isDragging, dragStart.x, dragStart.y, viewState, baseParams, data, showHoverDebug, updateCounter, lapOrder])
 
   const handleMouseUp = useCallback(() => setIsDragging(false), [])
   const handleMouseLeave = useCallback(() => {

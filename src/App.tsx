@@ -4,7 +4,7 @@ import { TrackVisualizer } from './components/TrackVisualizer'
 import { LapsPanel } from './components/LapsPanel'
 import { VBOData } from './models/VBOData'
 import { VBOParser } from './utils/vboParser'
-import { FolderIcon, MapIcon, ResetIcon, BugIcon, RacingFlagIcon, SettingsIcon } from './components/Icons'
+import { FolderIcon, MapIcon, ResetIcon, RacingFlagIcon, SettingsIcon } from './components/Icons'
 
 function App() {
   const [vboData, setVboData] = useState<VBOData | null>(null)
@@ -15,6 +15,14 @@ function App() {
   const [showSettingsPanel, setShowSettingsPanel] = useState<boolean>(false)
   const [updateCounter, setUpdateCounter] = useState<number>(0) // Для принудительной перерисовки
   const [tolerancePercent, setTolerancePercent] = useState<number>(15) // Допустимое отклонение от медианы
+  const [sortField, setSortField] = useState<'lap' | 'distance' | 'time' | 'speed' | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+  const [lapOrder, setLapOrder] = useState<number[]>([]) // Порядок индексов кругов после сортировки
+  
+  const handleSortChange = (field: 'lap' | 'distance' | 'time' | 'speed' | null, direction: 'asc' | 'desc') => {
+    setSortField(field)
+    setSortDirection(direction)
+  }
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -122,7 +130,7 @@ function App() {
                 </>
               )}
             </div>
-            <h1><RacingFlagIcon size={24} /> VBO Track Viewer</h1>
+            <h1><RacingFlagIcon size={24} /> Track Tools</h1>
           </div>
           {compactInfo && (
             <div className="compact-info">
@@ -160,10 +168,12 @@ function App() {
 
         {!vboData && !loading && !error && (
           <div className="welcome-message">
-            <div className="welcome-icon"><FolderIcon size={64} /></div>
-            <h2>VBO Track Viewer</h2>
+            <div className="welcome-icon" onClick={handleOpenClick} style={{ cursor: 'pointer' }}>
+              <FolderIcon size={64} />
+            </div>
+            <h2>Track Tools</h2>
             <p>Нажмите кнопку "Открыть VBO файл" для визуализации GPS-трека</p>
-            <p className="file-info">Поддерживаемый формат: dragy VBO files</p>
+            <p className="file-info">Поддерживаемый формат: VBO</p>
             <div className="features">
               <div className="feature">
                 <span className="feature-icon"><MapIcon size={20} /></span>
@@ -172,10 +182,6 @@ function App() {
               <div className="feature">
                 <span className="feature-icon"><MapIcon size={20} /></span>
                 <span>Зум и панорамирование мышкой</span>
-              </div>
-              <div className="feature">
-                <span className="feature-icon"><MapIcon size={20} /></span>
-                <span>Обработка больших файлов (30-50k точек)</span>
               </div>
             </div>
           </div>
@@ -194,6 +200,7 @@ function App() {
                 updateCounter={updateCounter}
                 tolerancePercent={tolerancePercent}
                 onToleranceChange={setTolerancePercent}
+                lapOrder={lapOrder}
               />
             </div>
             <LapsPanel
@@ -202,6 +209,10 @@ function App() {
               onToggleAllLaps={toggleAllLaps}
               updateCounter={updateCounter}
               tolerancePercent={tolerancePercent}
+              sortField={sortField}
+              sortDirection={sortDirection}
+              onSortChange={handleSortChange}
+              onLapOrderChange={setLapOrder}
             />
           </>
         )}
