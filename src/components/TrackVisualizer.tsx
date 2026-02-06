@@ -288,7 +288,7 @@ export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKe
 
     // Используем requestAnimationFrame для оптимизации
     animationFrameRef.current = requestAnimationFrame(() => {
-      ctx.fillStyle = '#f8f9fa'
+      ctx.fillStyle = '#1a1a1a'
       ctx.fillRect(0, 0, canvas.width, canvas.height)
 
     const bbox = data.boundingBox
@@ -336,7 +336,7 @@ export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKe
       })
     }
 
-    ctx.strokeStyle = '#999'
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)'
     ctx.lineWidth = 1 / viewState.scale
     ctx.strokeRect(
       toLocalX(bbox.minLong),
@@ -379,11 +379,11 @@ export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKe
           const c3 = metersToGps(corner3X_m, corner3Y_m, bbox.minLat, bbox.minLong)
           const c4 = metersToGps(corner4X_m, corner4Y_m, bbox.minLat, bbox.minLong)
           
-          // Шахматный порядок
-          const isWhite = (i + row) % 2 === 0
-          ctx.fillStyle = isWhite ? '#ffffff' : '#000000'
-          ctx.strokeStyle = '#000000'
-          ctx.lineWidth = 2 / viewState.scale
+          // Шахматный порядок - менее контрастный
+          const isOrange = (i + row) % 2 === 0
+          ctx.fillStyle = isOrange ? '#FF6B00' : '#2a2a2a'
+          ctx.strokeStyle = 'rgba(255, 107, 0, 0.5)'
+          ctx.lineWidth = 1 / viewState.scale
           
           ctx.beginPath()
           ctx.moveTo(toLocalX(c1.long), toLocalY(c1.lat))
@@ -402,20 +402,27 @@ export function TrackVisualizer({ data, showTiles: showTilesProp = true, resetKe
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
     
-    if (tiles.size > 0) {
-      ctx.shadowColor = 'rgba(255,255,255,0.8)'
-      ctx.shadowBlur = 3 / viewState.scale
-    }
+    // Убираем яркое свечение
+    ctx.shadowColor = 'transparent'
+    ctx.shadowBlur = 0
 
     const lapColors = [
-      '#ff0000', // красный
-      '#00ff00', // зеленый
-      '#0000ff', // синий
-      '#ffff00', // желтый
-      '#ff00ff', // пурпурный
-      '#00ffff', // циан
-      '#ff8800', // оранжевый
-      '#8800ff', // фиолетовый
+      '#FF6B00', // ярко-оранжевый
+      '#00FFD1', // неоновый циан
+      '#FF0080', // неоновый розовый
+      '#FFD700', // золотой
+      '#7FFF00', // неоновый лайм
+      '#FF1493', // глубокий розовый
+      '#00E5FF', // яркий голубой
+      '#FFB000', // янтарный
+      '#B026FF', // неоновый фиолетовый
+      '#00FF7F', // весенний зеленый
+      '#FF4500', // огненный оранжевый
+      '#39FF14', // неоновый зеленый
+      '#FF69B4', // горячий розовый
+      '#00BFFF', // глубокий небесно-голубой
+      '#FFAA00', // оранжево-желтый
+      '#DA70D6', // орхидея
     ]
 
     data.laps.forEach((lap, lapIdx) => {

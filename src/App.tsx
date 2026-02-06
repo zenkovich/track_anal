@@ -3,6 +3,7 @@ import './App.css'
 import { TrackVisualizer } from './components/TrackVisualizer'
 import { LapsPanel } from './components/LapsPanel'
 import { VBOData, VBOParser } from './utils/vboParser'
+import { FolderIcon, MapIcon, ResetIcon, BugIcon, SpeedometerIcon, RacingFlagIcon } from './components/Icons'
 
 function App() {
   const [vboData, setVboData] = useState<VBOData | null>(null)
@@ -109,7 +110,7 @@ function App() {
           <div className="header-left">
             <div className="control-buttons">
               <button onClick={handleOpenClick} className="control-button-icon" title="Открыть VBO файл">
-                📂
+                <FolderIcon size={20} />
               </button>
               <input
                 id="file-input"
@@ -125,26 +126,26 @@ function App() {
                     className="control-button-icon" 
                     title={showTiles ? 'Скрыть карту' : 'Показать карту'}
                   >
-                    {showTiles ? '🗺️' : '🗺️'}
+                    <MapIcon size={20} />
                   </button>
                   <button 
                     onClick={handleReset} 
                     className="control-button-icon"
                     title="Сбросить вид"
                   >
-                    🔄
+                    <ResetIcon size={20} />
                   </button>
                   <button 
                     onClick={() => setShowDebugPanel(prev => !prev)} 
                     className="control-button-icon"
                     title="Отладка"
                   >
-                    🐛
+                    <BugIcon size={20} />
                   </button>
                 </>
               )}
             </div>
-            <h1>📊 VBO Track Viewer</h1>
+            <h1><RacingFlagIcon size={24} /> VBO Track Viewer</h1>
           </div>
           {compactInfo && (
             <div className="compact-info">
@@ -182,21 +183,21 @@ function App() {
 
         {!vboData && !loading && !error && (
           <div className="welcome-message">
-            <div className="welcome-icon">📁</div>
-            <h2>Добро пожаловать в VBO Track Viewer</h2>
+            <div className="welcome-icon"><FolderIcon size={64} /></div>
+            <h2>VBO Track Viewer</h2>
             <p>Нажмите кнопку "Открыть VBO файл" для визуализации GPS-трека</p>
             <p className="file-info">Поддерживаемый формат: dragy VBO files</p>
             <div className="features">
               <div className="feature">
-                <span className="feature-icon">🗺️</span>
+                <span className="feature-icon"><MapIcon size={20} /></span>
                 <span>Визуализация GPS-трека</span>
               </div>
               <div className="feature">
-                <span className="feature-icon">🔍</span>
+                <span className="feature-icon"><SpeedometerIcon size={20} /></span>
                 <span>Зум и панорамирование мышкой</span>
               </div>
               <div className="feature">
-                <span className="feature-icon">⚡</span>
+                <span className="feature-icon"><SpeedometerIcon size={20} /></span>
                 <span>Обработка больших файлов (30-50k точек)</span>
               </div>
             </div>

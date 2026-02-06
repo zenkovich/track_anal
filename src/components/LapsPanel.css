@@ -1,9 +1,9 @@
 /* Боковая панель кругов (справа) */
 .laps-panel-side {
   position: relative;
-  background: white;
-  border-left: 1px solid #e0e0e0;
-  box-shadow: -2px 0 4px rgba(0, 0, 0, 0.05);
+  background: #222;
+  border-left: 1px solid #333;
+  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.3);
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -22,13 +22,13 @@
   top: 0;
   bottom: 0;
   width: 4px;
-  background: #e0e0e0;
+  background: transparent;
   cursor: ew-resize;
   z-index: 10;
 }
 
 .laps-resizer-side:hover {
-  background: #667eea;
+  background: #FF6B00;
 }
 
 .laps-resizer-handle-side {
@@ -38,19 +38,19 @@
   transform: translate(-50%, -50%);
   width: 3px;
   height: 40px;
-  background: #999;
+  background: #555;
   border-radius: 2px;
 }
 
 .laps-resizer-side:hover .laps-resizer-handle-side {
-  background: white;
+  background: #FF6B00;
 }
 
 /* Заголовок панели */
 .laps-panel-header-side {
   padding: 0.75rem 1rem;
-  background: linear-gradient(to bottom, #f8f9fa, #ffffff);
-  border-bottom: 2px solid #d0d0d0;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid #333;
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -67,25 +67,25 @@
   margin: 0;
   font-size: 1rem;
   font-weight: 600;
-  color: #333;
+  color: #e0e0e0;
   flex: 1;
 }
 
 .collapse-button-side {
-  background: none;
+  background: rgba(255, 255, 255, 0.05);
   border: none;
   font-size: 1rem;
   cursor: pointer;
-  color: #666;
+  color: #808080;
   padding: 0.3rem;
   transition: all 0.2s;
   line-height: 1;
-  border-radius: 4px;
+  border-radius: 6px;
 }
 
 .collapse-button-side:hover {
-  color: #333;
-  background: rgba(0, 0, 0, 0.05);
+  color: #FF6B00;
+  background: rgba(255, 107, 0, 0.15);
 }
 
 .lap-checkbox-all {
@@ -95,22 +95,25 @@
   cursor: pointer;
   margin: 0;
   font-size: 0.85rem;
-  color: #333;
+  color: #b0b0b0;
   font-weight: 600;
   padding: 0.3rem 0.6rem;
-  background: rgba(102, 126, 234, 0.1);
-  border-radius: 4px;
-  transition: background 0.2s;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  transition: all 0.2s;
 }
 
 .lap-checkbox-all:hover {
-  background: rgba(102, 126, 234, 0.15);
+  background: rgba(255, 107, 0, 0.1);
+  color: #FF6B00;
 }
 
 .lap-checkbox-all input[type="checkbox"] {
   cursor: pointer;
   width: 14px;
   height: 14px;
+  accent-color: #FF6B00;
 }
 
 /* Содержимое панели */
@@ -131,36 +134,39 @@
 .laps-table-side thead {
   position: sticky;
   top: 0;
-  background: #f8f9fa;
+  background: rgba(255, 255, 255, 0.03);
   z-index: 1;
 }
 
 .laps-table-side th {
   padding: 0.5rem 0.4rem;
   font-weight: 600;
-  color: #333;
-  border-bottom: 2px solid #d0d0d0;
+  color: #808080;
+  border-bottom: 1px solid #333;
   white-space: nowrap;
   font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .laps-table-side tbody tr {
-  transition: background 0.15s;
+  transition: all 0.2s;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .laps-table-side tbody tr:hover {
-  background: #f0f0f0;
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .laps-table-side tbody tr.active {
-  background: #e8f4fd;
+  background: rgba(255, 107, 0, 0.1);
 }
 
 .laps-table-side td {
   padding: 0.5rem 0.4rem;
-  border-bottom: 1px solid #e8e8e8;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   white-space: nowrap;
-  color: #222;
+  color: #b0b0b0;
   font-weight: 500;
 }
 
@@ -174,6 +180,7 @@
   cursor: pointer;
   width: 14px;
   height: 14px;
+  accent-color: #FF6B00;
 }
 
 /* Колонка цвета */
@@ -187,14 +194,14 @@
   width: 16px;
   height: 16px;
   border-radius: 3px;
-  border: 2px solid #000;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 /* Колонка Lap */
 .col-lap {
   text-align: left;
   font-weight: 600;
-  color: #111;
+  color: #e0e0e0;
 }
 
 /* Колонка Distance */
