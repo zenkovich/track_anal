@@ -19,6 +19,7 @@ function App() {
   const [sortField, setSortField] = useState<'lap' | 'distance' | 'time' | 'speed' | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [lapOrder, setLapOrder] = useState<number[]>([]) // Порядок индексов кругов после сортировки
+  const [projectionDistance, setProjectionDistance] = useState<number | null>(null) // Общая дистанция для синхронизации проекций
   
   const handleSortChange = (field: 'lap' | 'distance' | 'time' | 'speed' | null, direction: 'asc' | 'desc') => {
     setSortField(field)
@@ -192,18 +193,20 @@ function App() {
           <>
             <div className="track-and-laps-container">
               <div className="visualization-container">
-                <TrackVisualizer 
-                  data={vboData} 
-                  showTiles={showTiles}
-                  onToggleTiles={handleToggleTiles}
-                  onReset={handleReset}
-                  resetKey={resetTrigger}
-                  showSettingsPanel={showSettingsPanel}
-                  updateCounter={updateCounter}
-                  tolerancePercent={tolerancePercent}
-                  onToleranceChange={setTolerancePercent}
-                  lapOrder={lapOrder}
-                />
+              <TrackVisualizer 
+                data={vboData} 
+                showTiles={showTiles}
+                onToggleTiles={handleToggleTiles}
+                onReset={handleReset}
+                resetKey={resetTrigger}
+                showSettingsPanel={showSettingsPanel}
+                updateCounter={updateCounter}
+                tolerancePercent={tolerancePercent}
+                onToleranceChange={setTolerancePercent}
+                lapOrder={lapOrder}
+                projectionDistance={projectionDistance}
+                onProjectionDistanceChange={setProjectionDistance}
+              />
               </div>
               <LapsPanel
                 data={vboData}
@@ -221,6 +224,8 @@ function App() {
               data={vboData}
               updateCounter={updateCounter}
               lapOrder={lapOrder}
+              projectionDistance={projectionDistance}
+              onProjectionDistanceChange={setProjectionDistance}
             />
           </>
         )}

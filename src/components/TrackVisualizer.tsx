@@ -15,6 +15,8 @@ interface TrackVisualizerProps {
   tolerancePercent?: number
   onToleranceChange?: (tolerance: number) => void
   lapOrder?: number[] // Порядок индексов кругов для отображения
+  projectionDistance?: number | null // Дистанция для синхронизированной проекции
+  onProjectionDistanceChange?: (distance: number | null) => void
 }
 
 interface ViewState {
@@ -44,7 +46,9 @@ export function TrackVisualizer({
   updateCounter = 0,
   tolerancePercent = 15,
   onToleranceChange,
-  lapOrder = []
+  lapOrder = [],
+  projectionDistance = null,
+  onProjectionDistanceChange
 }: TrackVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -270,6 +274,11 @@ export function TrackVisualizer({
       
       setMousePos({ x: mouseX, y: mouseY })
       
+      // Сбрасываем projectionDistance при локальном hover, чтобы избежать конфликтов
+      if (onProjectionDistanceChange) {
+        onProjectionDistanceChange(null)
+      }
+      
       // Конвертация экранных координат в world координаты (локальные координаты canvas)
       const worldX = (mouseX - viewState.offsetX) / viewState.scale
       const worldY = (mouseY - viewState.offsetY) / viewState.scale
@@ -470,20 +479,106 @@ export function TrackVisualizer({
         checkedSegments
       })
       
+      // Отправляем дистанцию для синхронизации с графиками
+      if (sortedPoints.length > 0 && onProjectionDistanceChange) {
+        // Берем дистанцию из первой найденной точки (все на одной дистанции)
+        onProjectionDistanceChange(sortedPoints[0].distance)
+      } else if (onProjectionDistanceChange) {
+        onProjectionDistanceChange(null)
+      }
+      
       // Debug: показываем конвертацию только при включенном debug режиме
       if (showHoverDebug && checkedSegments.length > 0) {
         console.log(`[Hover] metersPerPixel: ${metersPerPixel.toFixed(4)}m, minDistance: ${minDistanceMeters.toFixed(2)}m (${minDistancePixels}px)`)
         console.log(`[Hover] Checked segments: ${checkedSegments.length}, in range: ${checkedSegments.filter(s => s.inRange).length}`)
       }
     }
-  }, [isDragging, dragStart.x, dragStart.y, viewState, baseParams, data, showHoverDebug, updateCounter, lapOrder])
+  }, [isDragging, dragStart.x, dragStart.y, viewState, baseParams, data, showHoverDebug, updateCounter, lapOrder, onProjectionDistanceChange])
+
+  // Вычисляем hoveredPoints на основе projectionDistance от графиков
+  useEffect(() => {
+    if (projectionDistance !== null && projectionDistance >= 0 && baseParams) {
+      // Проверяем, отличается ли projectionDistance от текущего локального hover
+      const currentDistance = hoveredPoints.length > 0 ? hoveredPoints[0].distance : null
+      // Если есть локальный hover с той же дистанцией, не обновляем
+      if (mousePos !== null && currentDistance !== null && Math.abs(currentDistance - projectionDistance) < 1) {
+        return
+      }
+      const fastestLapIndex = data.getFastestVisibleLap()
+      const projectedPoints: TrackPoint[] = []
+      
+      data.laps.forEach(lap => {
+        if (!lap.visible) return
+        
+        // Находим точку на нужной дистанции (берем ближайшую)
+        let closestRow = null
+        let minDiff = Infinity
+        
+        for (const row of lap.rows) {
+          if (row.lapDistanceFromStart !== undefined) {
+            const diff = Math.abs(row.lapDistanceFromStart - projectionDistance)
+            if (diff < minDiff) {
+              minDiff = diff
+              closestRow = row
+            }
+          }
+        }
+        
+        if (!closestRow || minDiff > 50) return // Слишком далеко
+        
+        // Конвертируем в экранные координаты
+        const toLocalX = (long: number) => (long - baseParams.centerX) * baseParams.baseScale
+        const toLocalY = (lat: number) => -(lat - baseParams.centerY) * baseParams.baseScale
+        
+        const localX = toLocalX(closestRow.long)
+        const localY = toLocalY(closestRow.lat)
+        const screenX = localX * viewState.scale + viewState.offsetX
+        const screenY = localY * viewState.scale + viewState.offsetY
+        
+        projectedPoints.push({
+          lapIndex: lap.index,
+          lapColor: lap.color,
+          lapName: `Lap ${lap.index + 1}`,
+          distance: closestRow.lapDistanceFromStart || 0,
+          time: `${((closestRow.lapTimeFromStart || 0) / 1000).toFixed(3)}s`,
+          timeMs: closestRow.lapTimeFromStart || 0,
+          velocity: closestRow.velocity,
+          x: screenX,
+          y: screenY,
+          isFastest: lap.index === fastestLapIndex
+        })
+      })
+      
+      // Сортируем как в таблице
+      if (lapOrder.length > 0 && projectedPoints.length > 1) {
+        const orderMap = new Map<number, number>()
+        lapOrder.forEach((lapIndex, position) => {
+          orderMap.set(lapIndex, position)
+        })
+        
+        projectedPoints.sort((a, b) => {
+          const posA = orderMap.get(a.lapIndex)
+          const posB = orderMap.get(b.lapIndex)
+          if (posA === undefined || posB === undefined) {
+            return a.lapIndex - b.lapIndex
+          }
+          return posA - posB
+        })
+      }
+      
+      setHoveredPoints(projectedPoints)
+    } else if (projectionDistance === null) {
+      // Очищаем если projectionDistance стал null
+      setHoveredPoints([])
+    }
+  }, [projectionDistance, data, baseParams, viewState, lapOrder, mousePos])
 
   const handleMouseUp = useCallback(() => setIsDragging(false), [])
   const handleMouseLeave = useCallback(() => {
     setIsDragging(false)
-    setHoveredPoints([])
     setMousePos(null)
     setDebugHoverData(null)
+    // Не очищаем hoveredPoints здесь, так как они могут быть от projectionDistance
   }, [])
 
   const toggleTileBorders = () => {
@@ -916,8 +1011,9 @@ export function TrackVisualizer({
       ctx.restore()
     }
     
-    // Hover точки (финальные найденные точки) - всегда показываются
-    if (hoveredPoints.length > 0 && !showHoverDebug) {
+    // Hover точки (финальные найденные точки) - показываются от локального hover
+    const isLocalHover = hoveredPoints.length > 0
+    if (isLocalHover && !showHoverDebug) {
       ctx.save()
       ctx.translate(viewState.offsetX, viewState.offsetY)
       ctx.scale(viewState.scale, viewState.scale)
@@ -942,6 +1038,52 @@ export function TrackVisualizer({
         ctx.lineWidth = 2 / viewState.scale
         ctx.beginPath()
         ctx.arc(localX, localY, hoverPointSize * 1.8, 0, 2 * Math.PI)
+        ctx.stroke()
+      })
+      
+      ctx.restore()
+    }
+    
+    // Синхронизированная проекция от графиков (если не локальный hover)
+    if (!isLocalHover && projectionDistance !== null && projectionDistance >= 0) {
+      ctx.save()
+      ctx.translate(viewState.offsetX, viewState.offsetY)
+      ctx.scale(viewState.scale, viewState.scale)
+      
+      // Рисуем точки проекции на всех видимых кругах
+      data.laps.forEach(lap => {
+        if (!lap.visible) return
+        
+        // Находим точку на нужной дистанции
+        const chart = lap.getChart('velocity') // Любой график для получения точки
+        if (!chart) return
+        
+        // Ищем точку с нужной дистанцией
+        let targetRow = null
+        for (const row of lap.rows) {
+          if (row.lapDistanceFromStart !== undefined && 
+              Math.abs(row.lapDistanceFromStart - projectionDistance) < 10) {
+            targetRow = row
+            break
+          }
+        }
+        
+        if (!targetRow) return
+        
+        const toLocalX = (long: number) => (long - baseParams.centerX) * baseParams.baseScale
+        const toLocalY = (lat: number) => -(lat - baseParams.centerY) * baseParams.baseScale
+        
+        const localX = toLocalX(targetRow.long)
+        const localY = toLocalY(targetRow.lat)
+        
+        // Рисуем точку
+        ctx.fillStyle = lap.color
+        ctx.strokeStyle = '#ffffff'
+        ctx.lineWidth = 2 / viewState.scale
+        const pointSize = 6 / viewState.scale
+        ctx.beginPath()
+        ctx.arc(localX, localY, pointSize, 0, 2 * Math.PI)
+        ctx.fill()
         ctx.stroke()
       })
       
@@ -973,7 +1115,7 @@ export function TrackVisualizer({
         style={{ cursor: isDragging ? 'grabbing' : 'default' }}
       />
       
-      {/* Tooltip с параметрами траектории */}
+      {/* Tooltip с параметрами траектории - показывается только при локальном hover, не при проекции от графиков */}
       {hoveredPoints.length > 0 && mousePos && (() => {
         // Находим референсную точку (самый быстрый круг)
         const referencePoint = hoveredPoints.find(p => p.isFastest)
@@ -983,18 +1125,30 @@ export function TrackVisualizer({
         const tooltipHeight = 50 + hoveredPoints.length * 75
         const offset = 15
         
+        // Позиционирование: используем mousePos если есть, иначе используем позицию первой точки
+        let tooltipX = 0
+        let tooltipY = 0
+        if (mousePos) {
+          tooltipX = mousePos.x
+          tooltipY = mousePos.y
+        } else if (hoveredPoints.length > 0) {
+          // Используем позицию первой точки (экранные координаты уже вычислены)
+          tooltipX = hoveredPoints[0].x
+          tooltipY = hoveredPoints[0].y
+        }
+        
         // Вписываем в область canvas
-        let left = mousePos.x + offset
-        let top = mousePos.y + offset
+        let left = tooltipX + offset
+        let top = tooltipY + offset
         
         // Проверка выхода за правый край
         if (left + tooltipWidth > dimensions.width) {
-          left = mousePos.x - tooltipWidth - offset
+          left = tooltipX - tooltipWidth - offset
         }
         
         // Проверка выхода за нижний край
         if (top + tooltipHeight > dimensions.height) {
-          top = mousePos.y - tooltipHeight - offset
+          top = tooltipY - tooltipHeight - offset
         }
         
         // Проверка выхода за левый край

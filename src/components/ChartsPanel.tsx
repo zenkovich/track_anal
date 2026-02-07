@@ -17,9 +17,11 @@ interface ChartsPanelProps {
   data: VBOData
   updateCounter: number
   lapOrder: number[]
+  projectionDistance: number | null
+  onProjectionDistanceChange: (distance: number | null) => void
 }
 
-export function ChartsPanel({ data, updateCounter, lapOrder = [] }: ChartsPanelProps) {
+export function ChartsPanel({ data, updateCounter, lapOrder = [], projectionDistance, onProjectionDistanceChange }: ChartsPanelProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [panelHeight, setPanelHeight] = useState(500)
   const [isResizing, setIsResizing] = useState(false)
@@ -38,9 +40,8 @@ export function ChartsPanel({ data, updateCounter, lapOrder = [] }: ChartsPanelP
   const [yZooms, setYZooms] = useState<Map<ChartType, number>>(new Map())
   const [yPans, setYPans] = useState<Map<ChartType, number>>(new Map())
   
-  // Общая дистанция курсора для всех графиков
-  const [sharedCursorDistance, setSharedCursorDistance] = useState<number | null>(null)
-  const [sharedMouseX, setSharedMouseX] = useState<number | null>(null)
+  // Локальная позиция мыши для tooltip
+  const [localMouseX, setLocalMouseX] = useState<number | null>(null)
   
   const toggleChart = (type: ChartType) => {
     const newSet = new Set(selectedCharts)
@@ -215,11 +216,11 @@ export function ChartsPanel({ data, updateCounter, lapOrder = [] }: ChartsPanelP
                         onXPanChange={setXPan}
                         onYZoomChange={(zoom) => setYZooms(prev => new Map(prev).set(chartType, zoom))}
                         onYPanChange={(pan) => setYPans(prev => new Map(prev).set(chartType, pan))}
-                        sharedCursorDistance={sharedCursorDistance}
-                        sharedMouseX={sharedMouseX}
+                        sharedCursorDistance={projectionDistance}
+                        sharedMouseX={localMouseX}
                         onSharedCursorChange={(distance, mouseX) => {
-                          setSharedCursorDistance(distance)
-                          setSharedMouseX(mouseX)
+                          onProjectionDistanceChange(distance)
+                          setLocalMouseX(mouseX)
                         }}
                         lapOrder={lapOrder}
                       />

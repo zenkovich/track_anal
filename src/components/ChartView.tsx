@@ -261,7 +261,7 @@ export function ChartView({
     }
 
     // Рисуем проекцию курсора на графики (точки и линии дельт)
-    if (sharedMouseX !== null && sharedCursorDistance !== null) {
+    if (sharedCursorDistance !== null && sharedCursorDistance >= 0) {
       // Вычисляем X позицию линии на этом графике
       const normalizedX = sharedCursorDistance / maxDistance
       const centerX = chartWidth / 2
@@ -529,11 +529,37 @@ export function ChartView({
       )}
       
       {/* Tooltip с значениями - показывается всегда если есть sharedCursorDistance */}
-      {chartValues.length > 0 && sharedCursorDistance !== null && sharedMouseX !== null && (
+      {chartValues.length > 0 && sharedCursorDistance !== null && sharedCursorDistance >= 0 && (() => {
+        // Вычисляем позицию tooltip: используем sharedMouseX если есть, иначе вычисляем из sharedCursorDistance
+        let tooltipX = 0
+        if (sharedMouseX !== null) {
+          tooltipX = Math.min(sharedMouseX + 15, dimensions.width - 180)
+        } else {
+          // Вычисляем позицию из sharedCursorDistance
+          const visibleLaps = data.getVisibleLaps()
+          let maxDistance = 0
+          visibleLaps.forEach(lap => {
+            const lastPoint = lap.rows[lap.rows.length - 1]
+            if (lastPoint.lapDistanceFromStart) {
+              maxDistance = Math.max(maxDistance, lastPoint.lapDistanceFromStart)
+            }
+          })
+          if (maxDistance > 0) {
+            const padding = { left: 50, right: 20, top: 20, bottom: 30 }
+            const chartWidth = dimensions.width - padding.left - padding.right
+            const centerX = chartWidth / 2
+            const normalizedX = sharedCursorDistance / maxDistance
+            const baseX = normalizedX * chartWidth
+            const lineX = padding.left + (baseX - centerX) * xZoom + centerX + xPan
+            tooltipX = Math.min(lineX + 15, dimensions.width - 180)
+          }
+        }
+        
+        return (
         <div 
           className="chart-tooltip"
           style={{
-            left: `${Math.min(sharedMouseX + 15, dimensions.width - 180)}px`,
+            left: `${tooltipX}px`,
             top: `10px`
           }}
         >
@@ -569,7 +595,8 @@ export function ChartView({
             )
           })}
         </div>
-      )}
+        )
+      })()}
     </div>
   )
 }
