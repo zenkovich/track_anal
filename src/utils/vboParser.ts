@@ -69,6 +69,9 @@ export class VBOParser {
     // 8. Применяем эвристику фильтрации (скрываем круги отличающиеся от медианы > 15%)
     vboData.applyTimeHeuristics(15)
     
+    // 9. Пересчитываем графики с учетом лучшего круга (для дельт)
+    vboData.recalculateChartsForAllLaps()
+    
     console.log('=== VBO Parser Complete ===')
     return vboData
   }

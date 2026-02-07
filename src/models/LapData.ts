@@ -66,13 +66,24 @@ export class LapData {
   
   /**
    * Рассчитывает все типы графиков для этого круга
+   * @param referenceLap Референсный круг (для графиков дельт)
    */
-  private calculateCharts(): void {
+  calculateCharts(referenceLap?: LapData): void {
     // Создаем и рассчитываем график для каждого типа
     CHART_TYPES.forEach(chartType => {
       const chart = createChart(chartType.type)
-      chart.calculate(this)
+      chart.calculate(this, referenceLap)
       this._charts.set(chartType.type, chart)
+    })
+  }
+  
+  /**
+   * Пересчитывает графики (например, при смене референсного круга)
+   * @param referenceLap Референсный круг
+   */
+  recalculateCharts(referenceLap?: LapData): void {
+    this._charts.forEach((chart) => {
+      chart.calculate(this, referenceLap)
     })
   }
   

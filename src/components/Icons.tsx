@@ -206,6 +206,71 @@ export const TimeIcon = ({ size = 20, color = 'currentColor' }: IconProps) => (
   </svg>
 )
 
+export const TimeDeltaIcon = ({ size = 20, color = 'currentColor' }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    {/* Часы с дельтой (стрелки вверх/вниз) */}
+    <circle 
+      cx="12" 
+      cy="12" 
+      r="9" 
+      stroke={color} 
+      strokeWidth="2.5" 
+      strokeLinecap="round" 
+      strokeLinejoin="round"
+    />
+    {/* Стрелка вверх (быстрее) */}
+    <path 
+      d="M9 10L12 7L15 10" 
+      stroke={color} 
+      strokeWidth="2.5" 
+      strokeLinecap="round" 
+      strokeLinejoin="round"
+    />
+    {/* Стрелка вниз (медленнее) */}
+    <path 
+      d="M9 14L12 17L15 14" 
+      stroke={color} 
+      strokeWidth="2.5" 
+      strokeLinecap="round" 
+      strokeLinejoin="round"
+    />
+  </svg>
+)
+
+export const VelocityDeltaIcon = ({ size = 20, color = 'currentColor' }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    {/* Спидометр с дельтой (стрелки вверх/вниз) */}
+    <path 
+      d="M4 12C4 7.58172 7.58172 4 12 4C16.4183 4 20 7.58172 20 12" 
+      stroke={color} 
+      strokeWidth="2.5" 
+      strokeLinecap="round"
+    />
+    <path 
+      d="M4 17H20" 
+      stroke={color} 
+      strokeWidth="2.5" 
+      strokeLinecap="round"
+    />
+    {/* Стрелка вверх */}
+    <path 
+      d="M9 10L12 7L15 10" 
+      stroke={color} 
+      strokeWidth="2.5" 
+      strokeLinecap="round" 
+      strokeLinejoin="round"
+    />
+    {/* Стрелка вниз */}
+    <path 
+      d="M9 14L12 17L15 14" 
+      stroke={color} 
+      strokeWidth="2.5" 
+      strokeLinecap="round" 
+      strokeLinejoin="round"
+    />
+  </svg>
+)
+
 export const GraphIcon = ({ size = 20, color = 'currentColor' }: IconProps) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     {/* График с линиями */}

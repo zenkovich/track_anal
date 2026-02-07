@@ -8,6 +8,7 @@ import { LapData } from '../LapData'
 export class VelocityChart extends BaseChart {
   readonly name = 'Velocity'
   readonly unit = 'km/h'
+  readonly needsReference = false
   
   calculate(lap: LapData): void {
     this.points = []

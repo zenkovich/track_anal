@@ -11,3 +11,27 @@
   width: 100%;
   height: 100%;
 }
+
+.chart-reset-button {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #808080;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chart-reset-button:hover {
+  background: rgba(255, 107, 0, 0.2);
+  color: #FF6B00;
+}

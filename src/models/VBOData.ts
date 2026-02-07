@@ -187,7 +187,21 @@ export class VBOData {
     const lap = this._laps[lapIndex]
     if (lap) {
       lap.toggleVisibility()
+      // Пересчитываем графики при изменении видимости (может измениться лучший круг)
+      this.recalculateChartsForAllLaps()
     }
+  }
+  
+  /**
+   * Пересчитывает графики для всех кругов (при изменении лучшего круга)
+   */
+  recalculateChartsForAllLaps(): void {
+    const fastestLapIndex = this.getFastestVisibleLap()
+    const referenceLap = fastestLapIndex !== null ? this._laps[fastestLapIndex] : undefined
+    
+    this._laps.forEach(lap => {
+      lap.recalculateCharts(referenceLap)
+    })
   }
 
   /**
@@ -195,6 +209,8 @@ export class VBOData {
    */
   setAllLapsVisibility(visible: boolean): void {
     this._laps.forEach(lap => lap.setVisibility(visible))
+    // Пересчитываем графики при массовом изменении
+    this.recalculateChartsForAllLaps()
   }
 
   /**

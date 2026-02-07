@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { VBOData } from '../models/VBOData'
-import { GraphIcon, VelocityIcon, TimeIcon } from './Icons'
+import { GraphIcon, VelocityIcon, TimeIcon, TimeDeltaIcon, VelocityDeltaIcon } from './Icons'
 import { ChartView } from './ChartView'
 import { ChartType, CHART_TYPES } from '../models/charts'
 import './ChartsPanel.css'
@@ -8,7 +8,9 @@ import './ChartsPanel.css'
 // Маппинг иконок
 const CHART_ICONS: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
   'VelocityIcon': VelocityIcon,
-  'TimeIcon': TimeIcon
+  'TimeIcon': TimeIcon,
+  'TimeDeltaIcon': TimeDeltaIcon,
+  'VelocityDeltaIcon': VelocityDeltaIcon
 }
 
 interface ChartsPanelProps {
@@ -26,6 +28,14 @@ export function ChartsPanel({ data, updateCounter }: ChartsPanelProps) {
   const [chartFlexRatios, setChartFlexRatios] = useState<number[]>([]) // Flex grow для каждого графика
   const [resizingIndex, setResizingIndex] = useState<number | null>(null)
   const [resizeStartY, setResizeStartY] = useState<number>(0)
+  
+  // Общий zoom и pan по оси X для всех графиков
+  const [xZoom, setXZoom] = useState(1)
+  const [xPan, setXPan] = useState(0)
+  
+  // Индивидуальные zoom и pan по оси Y для каждого графика
+  const [yZooms, setYZooms] = useState<Map<ChartType, number>>(new Map())
+  const [yPans, setYPans] = useState<Map<ChartType, number>>(new Map())
   
   const toggleChart = (type: ChartType) => {
     const newSet = new Set(selectedCharts)
@@ -192,6 +202,14 @@ export function ChartsPanel({ data, updateCounter }: ChartsPanelProps) {
                         data={data}
                         chartType={chartType}
                         updateCounter={updateCounter}
+                        xZoom={xZoom}
+                        xPan={xPan}
+                        yZoom={yZooms.get(chartType) || 1}
+                        yPan={yPans.get(chartType) || 0}
+                        onXZoomChange={setXZoom}
+                        onXPanChange={setXPan}
+                        onYZoomChange={(zoom) => setYZooms(prev => new Map(prev).set(chartType, zoom))}
+                        onYPanChange={(pan) => setYPans(prev => new Map(prev).set(chartType, pan))}
                       />
                     </div>
                     {index < selectedCharts.size - 1 && (

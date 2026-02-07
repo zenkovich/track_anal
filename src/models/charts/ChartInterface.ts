@@ -25,11 +25,15 @@ export interface IChart {
   /** Точки данных графика */
   readonly points: ChartDataPoint[]
   
+  /** Требуется ли референсный круг для расчета */
+  readonly needsReference: boolean
+  
   /**
    * Рассчитывает график для круга
    * @param lap Круг для расчета
+   * @param referenceLap Референсный круг (опционально, для дельт)
    */
-  calculate(lap: LapData): void
+  calculate(lap: LapData, referenceLap?: LapData): void
   
   /**
    * Получает минимальное значение Y
@@ -54,10 +58,11 @@ export interface IChart {
 export abstract class BaseChart implements IChart {
   abstract readonly name: string
   abstract readonly unit: string
+  readonly needsReference: boolean = false
   
   points: ChartDataPoint[] = []
   
-  abstract calculate(lap: LapData): void
+  abstract calculate(lap: LapData, referenceLap?: LapData): void
   
   getMinValue(): number {
     if (this.points.length === 0) return 0

@@ -5,15 +5,19 @@
 import { IChart } from './ChartInterface'
 import { VelocityChart } from './VelocityChart'
 import { TimeChart } from './TimeChart'
+import { TimeDeltaChart } from './TimeDeltaChart'
+import { VelocityDeltaChart } from './VelocityDeltaChart'
 
 export * from './ChartInterface'
 export * from './VelocityChart'
 export * from './TimeChart'
+export * from './TimeDeltaChart'
+export * from './VelocityDeltaChart'
 
 /**
  * Типы графиков
  */
-export type ChartType = 'velocity' | 'time'
+export type ChartType = 'velocity' | 'time' | 'timedelta' | 'velocitydelta'
 
 /**
  * Описание типа графика
@@ -40,6 +44,18 @@ export const CHART_TYPES: ChartTypeInfo[] = [
     name: 'Time',
     icon: 'TimeIcon',
     createInstance: () => new TimeChart()
+  },
+  {
+    type: 'timedelta',
+    name: 'Time Δ',
+    icon: 'TimeDeltaIcon',
+    createInstance: () => new TimeDeltaChart()
+  },
+  {
+    type: 'velocitydelta',
+    name: 'Velocity Δ',
+    icon: 'VelocityDeltaIcon',
+    createInstance: () => new VelocityDeltaChart()
   }
 ]
 

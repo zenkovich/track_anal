@@ -8,6 +8,7 @@ import { LapData } from '../LapData'
 export class TimeChart extends BaseChart {
   readonly name = 'Time'
   readonly unit = 's'
+  readonly needsReference = false
   
   calculate(lap: LapData): void {
     this.points = []
