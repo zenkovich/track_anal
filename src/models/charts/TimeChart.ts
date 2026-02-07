@@ -9,6 +9,7 @@ export class TimeChart extends BaseChart {
   readonly name = 'Time'
   readonly unit = 's'
   readonly needsReference = false
+  readonly higherIsBetter = false // Меньше время = лучше
   
   calculate(lap: LapData): void {
     this.points = []

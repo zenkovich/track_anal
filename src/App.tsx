@@ -220,6 +220,7 @@ function App() {
             <ChartsPanel
               data={vboData}
               updateCounter={updateCounter}
+              lapOrder={lapOrder}
             />
           </>
         )}

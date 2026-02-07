@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { VBOData } from '../models/VBOData'
-import { ChartType } from '../models/charts'
+import { ChartType, CHART_TYPES } from '../models/charts'
 import './ChartView.css'
 
 interface ChartViewProps {
@@ -15,6 +15,18 @@ interface ChartViewProps {
   onXPanChange: (pan: number) => void
   onYZoomChange: (zoom: number) => void
   onYPanChange: (pan: number) => void
+  sharedCursorDistance: number | null
+  sharedMouseX: number | null
+  onSharedCursorChange: (distance: number | null, mouseX: number | null) => void
+  lapOrder: number[]
+}
+
+interface ChartValue {
+  lapIndex: number
+  lapColor: string
+  lapName: string
+  value: number
+  isFastest: boolean
 }
 
 export function ChartView({ 
@@ -28,7 +40,11 @@ export function ChartView({
   onXZoomChange,
   onXPanChange,
   onYZoomChange,
-  onYPanChange
+  onYPanChange,
+  sharedCursorDistance,
+  sharedMouseX,
+  onSharedCursorChange,
+  lapOrder
 }: ChartViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -36,6 +52,7 @@ export function ChartView({
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null)
+  const [chartValues, setChartValues] = useState<ChartValue[]>([])
 
   // Отслеживаем изменения размеров контейнера
   useEffect(() => {
@@ -59,6 +76,54 @@ export function ChartView({
       resizeObserver.disconnect()
     }
   }, [])
+
+  // Пересчитываем значения при изменении общей дистанции курсора
+  useEffect(() => {
+    if (sharedCursorDistance !== null && sharedCursorDistance >= 0) {
+      const visibleLaps = data.getVisibleLaps()
+      const fastestLapIndex = data.getFastestVisibleLap()
+      const values: ChartValue[] = []
+      
+      visibleLaps.forEach(lap => {
+        const chart = lap.getChart(chartType)
+        if (!chart) return
+        
+        const value = chart.getValueAtDistance(sharedCursorDistance)
+        if (value === null) return
+        
+        values.push({
+          lapIndex: lap.index,
+          lapColor: lap.color,
+          lapName: `Lap ${lap.index + 1}`,
+          value: value,
+          isFastest: lap.index === fastestLapIndex
+        })
+      })
+      
+      // Сортируем значения согласно порядку в таблице
+      if (lapOrder.length > 0 && values.length > 1) {
+        const orderMap = new Map<number, number>()
+        lapOrder.forEach((lapIndex, position) => {
+          orderMap.set(lapIndex, position)
+        })
+        
+        values.sort((a, b) => {
+          const posA = orderMap.get(a.lapIndex)
+          const posB = orderMap.get(b.lapIndex)
+          
+          if (posA === undefined || posB === undefined) {
+            return a.lapIndex - b.lapIndex
+          }
+          
+          return posA - posB
+        })
+      }
+      
+      setChartValues(values)
+    } else {
+      setChartValues([])
+    }
+  }, [sharedCursorDistance, data, chartType, lapOrder])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -195,24 +260,94 @@ export function ChartView({
       }
     }
 
-    // Рисуем перекрестие от курсора
+    // Рисуем проекцию курсора на графики (точки и линии дельт)
+    if (sharedMouseX !== null && sharedCursorDistance !== null) {
+      // Вычисляем X позицию линии на этом графике
+      const normalizedX = sharedCursorDistance / maxDistance
+      const centerX = chartWidth / 2
+      const baseX = normalizedX * chartWidth
+      const lineX = padding.left + (baseX - centerX) * xZoom + centerX + xPan
+      
+      // Рисуем точки проекции и линии дельт
+      const fastestLapIndex = data.getFastestVisibleLap()
+      let referenceValue: number | null = null
+      let referenceY: number | null = null
+      
+      // Сначала находим референсное значение (лучший круг)
+      if (fastestLapIndex !== null) {
+        const refLap = data.laps[fastestLapIndex]
+        if (refLap && refLap.visible) {
+          const refChart = refLap.getChart(chartType)
+          if (refChart) {
+            referenceValue = refChart.getValueAtDistance(sharedCursorDistance)
+            if (referenceValue !== null) {
+              referenceY = toScreenY(referenceValue)
+            }
+          }
+        }
+      }
+      
+      // Рисуем точки и линии дельт для каждого круга
+      visibleLaps.forEach(lap => {
+        const chart = lap.getChart(chartType)
+        if (!chart) return
+        
+        const value = chart.getValueAtDistance(sharedCursorDistance)
+        if (value === null) return
+        
+        const pointY = toScreenY(value)
+        const isFastest = lap.index === fastestLapIndex
+        
+        // Рисуем линию дельты (если не самый быстрый и есть референс)
+        if (!isFastest && referenceY !== null && referenceValue !== null) {
+          const delta = value - referenceValue
+          
+          // Определяем цвет на основе higherIsBetter
+          let lineColor: string
+          if (chart.higherIsBetter) {
+            // Больше лучше: положительная дельта = зеленый
+            lineColor = delta > 0 ? '#00ff00' : '#ff6666'
+          } else {
+            // Меньше лучше: отрицательная дельта = зеленый
+            lineColor = delta < 0 ? '#00ff00' : '#ff6666'
+          }
+          
+          ctx.strokeStyle = lineColor
+          ctx.lineWidth = 2
+          ctx.setLineDash([3, 3])
+          
+          ctx.beginPath()
+          ctx.moveTo(lineX, referenceY)
+          ctx.lineTo(lineX, pointY)
+          ctx.stroke()
+          
+          ctx.setLineDash([])
+        }
+        
+        // Рисуем точку проекции (в 2 раза меньше)
+        ctx.fillStyle = lap.color
+        ctx.strokeStyle = '#ffffff'
+        ctx.lineWidth = 1.5
+        const pointSize = 2.5
+        
+        ctx.beginPath()
+        ctx.arc(lineX, pointY, pointSize, 0, 2 * Math.PI)
+        ctx.fill()
+        ctx.stroke()
+      })
+    }
+    
+    // Рисуем горизонтальную линию от локального курсора (только если курсор над этим графиком)
     if (mousePos) {
       const mouseX = mousePos.x
       const mouseY = mousePos.y
       
-      // Проверяем что курсор в области графика
       if (mouseX >= padding.left && mouseX <= canvas.width - padding.right &&
           mouseY >= padding.top && mouseY <= canvas.height - padding.bottom) {
         
         ctx.strokeStyle = '#FF6B00'
         ctx.lineWidth = 1
         ctx.setLineDash([5, 5])
-        
-        // Вертикальная линия
-        ctx.beginPath()
-        ctx.moveTo(mouseX, padding.top)
-        ctx.lineTo(mouseX, canvas.height - padding.bottom)
-        ctx.stroke()
         
         // Горизонтальная линия
         ctx.beginPath()
@@ -224,7 +359,7 @@ export function ChartView({
       }
     }
 
-  }, [data, chartType, dimensions, updateCounter, xZoom, xPan, yZoom, yPan, mousePos])
+  }, [data, chartType, dimensions, updateCounter, xZoom, xPan, yZoom, yPan, mousePos, sharedCursorDistance, sharedMouseX])
 
   // Обработчик zoom (колесо мыши) - zoom относительно курсора
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
@@ -294,6 +429,40 @@ export function ChartView({
     
     setMousePos({ x: mouseX, y: mouseY })
     
+    // Вычисляем значения в точке курсора для всех кругов
+    const padding = { left: 50, right: 20, top: 20, bottom: 30 }
+    
+    if (!isDragging && mouseX >= padding.left && mouseX <= canvas.width - padding.right &&
+        mouseY >= padding.top && mouseY <= canvas.height - padding.bottom) {
+      
+      const chartWidth = canvas.width - padding.left - padding.right
+      const centerX = chartWidth / 2
+      
+      // Получаем максимальную дистанцию
+      const visibleLaps = data.getVisibleLaps()
+      let maxDistance = 0
+      visibleLaps.forEach(lap => {
+        const lastPoint = lap.rows[lap.rows.length - 1]
+        if (lastPoint.lapDistanceFromStart) {
+          maxDistance = Math.max(maxDistance, lastPoint.lapDistanceFromStart)
+        }
+      })
+      
+      if (maxDistance > 0) {
+        // Обратная конвертация: screenX -> distance
+        const baseX = (mouseX - padding.left - centerX - xPan) / xZoom + centerX
+        const normalizedX = baseX / chartWidth
+        const distance = normalizedX * maxDistance
+        
+        // Отправляем общую дистанцию для всех графиков
+        onSharedCursorChange(distance, mouseX)
+      } else {
+        onSharedCursorChange(null, null)
+      }
+    } else {
+      onSharedCursorChange(null, null)
+    }
+    
     if (!isDragging) return
     
     const deltaX = e.clientX - dragStart.x
@@ -313,6 +482,7 @@ export function ChartView({
   const handleMouseLeave = () => {
     setIsDragging(false)
     setMousePos(null)
+    onSharedCursorChange(null, null)
   }
 
   // Сброс zoom/pan
@@ -324,6 +494,17 @@ export function ChartView({
   }
 
   const hasTransform = xZoom !== 1 || yZoom !== 1 || xPan !== 0 || yPan !== 0
+
+  // Вычисляем референсное значение для дельты
+  const fastestLapIndex = data.getFastestVisibleLap()
+  const refValue = fastestLapIndex !== null 
+    ? chartValues.find(v => v.lapIndex === fastestLapIndex)?.value 
+    : null
+
+  // Получаем название графика
+  const chartName = CHART_TYPES.find(ct => ct.type === chartType)?.name || ''
+  const sampleChart = data.getVisibleLaps()[0]?.getChart(chartType)
+  const unit = sampleChart?.unit || ''
 
   return (
     <div className="chart-view" ref={containerRef}>
@@ -345,6 +526,49 @@ export function ChartView({
         >
           ⟲
         </button>
+      )}
+      
+      {/* Tooltip с значениями - показывается всегда если есть sharedCursorDistance */}
+      {chartValues.length > 0 && sharedCursorDistance !== null && sharedMouseX !== null && (
+        <div 
+          className="chart-tooltip"
+          style={{
+            left: `${Math.min(sharedMouseX + 15, dimensions.width - 180)}px`,
+            top: `10px`
+          }}
+        >
+          <div className="chart-tooltip-title">{chartName} ({unit})</div>
+          {chartValues.map(cv => {
+            // Вычисляем дельту с учетом higherIsBetter
+            let delta = null
+            let deltaColor = ''
+            if (refValue !== null && refValue !== undefined && !cv.isFastest) {
+              const deltaVal = cv.value - refValue
+              delta = deltaVal >= 0 ? `+${deltaVal.toFixed(2)}` : deltaVal.toFixed(2)
+              
+              // Определяем цвет на основе логики графика
+              if (sampleChart?.higherIsBetter) {
+                // Больше лучше: положительная дельта = зеленый
+                deltaColor = deltaVal > 0 ? '#00ff00' : '#ff6666'
+              } else {
+                // Меньше лучше: отрицательная дельта = зеленый
+                deltaColor = deltaVal < 0 ? '#00ff00' : '#ff6666'
+              }
+            }
+            
+            return (
+              <div key={cv.lapIndex} className="chart-tooltip-row">
+                <span className="chart-tooltip-color" style={{ backgroundColor: cv.lapColor }} />
+                <span className="chart-tooltip-flag">{cv.isFastest ? '🏁' : ''}</span>
+                <span className="chart-tooltip-lap">{cv.lapName}</span>
+                <span className="chart-tooltip-value">{cv.value.toFixed(2)}</span>
+                <span className="chart-tooltip-delta" style={{ color: delta ? deltaColor : 'transparent' }}>
+                  {delta || ''}
+                </span>
+              </div>
+            )
+          })}
+        </div>
       )}
     </div>
   )

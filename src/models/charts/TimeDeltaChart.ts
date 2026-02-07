@@ -9,6 +9,7 @@ export class TimeDeltaChart extends BaseChart {
   readonly name = 'Time Delta'
   readonly unit = 's'
   readonly needsReference = true
+  readonly higherIsBetter = false // Меньше дельта (отрицательная) = быстрее = лучше
   
   calculate(lap: LapData, referenceLap?: LapData): void {
     this.points = []

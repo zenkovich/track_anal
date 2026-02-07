@@ -9,6 +9,7 @@ export class VelocityChart extends BaseChart {
   readonly name = 'Velocity'
   readonly unit = 'km/h'
   readonly needsReference = false
+  readonly higherIsBetter = true // Больше скорость = лучше
   
   calculate(lap: LapData): void {
     this.points = []

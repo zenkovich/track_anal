@@ -28,6 +28,13 @@ export interface IChart {
   /** Требуется ли референсный круг для расчета */
   readonly needsReference: boolean
   
+  /** 
+   * Больше значит лучше?
+   * true: большие значения = лучше (зеленая дельта для положительных)
+   * false: меньшие значения = лучше (зеленая дельта для отрицательных)
+   */
+  readonly higherIsBetter: boolean
+  
   /**
    * Рассчитывает график для круга
    * @param lap Круг для расчета
@@ -59,6 +66,7 @@ export abstract class BaseChart implements IChart {
   abstract readonly name: string
   abstract readonly unit: string
   readonly needsReference: boolean = false
+  abstract readonly higherIsBetter: boolean
   
   points: ChartDataPoint[] = []
   

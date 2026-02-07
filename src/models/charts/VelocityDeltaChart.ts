@@ -9,6 +9,7 @@ export class VelocityDeltaChart extends BaseChart {
   readonly name = 'Velocity Delta'
   readonly unit = 'km/h'
   readonly needsReference = true
+  readonly higherIsBetter = true // Больше дельта (положительная) = быстрее = лучше
   
   calculate(lap: LapData, referenceLap?: LapData): void {
     this.points = []

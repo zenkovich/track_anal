@@ -16,9 +16,10 @@ const CHART_ICONS: Record<string, React.ComponentType<{ size?: number; color?: s
 interface ChartsPanelProps {
   data: VBOData
   updateCounter: number
+  lapOrder: number[]
 }
 
-export function ChartsPanel({ data, updateCounter }: ChartsPanelProps) {
+export function ChartsPanel({ data, updateCounter, lapOrder = [] }: ChartsPanelProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [panelHeight, setPanelHeight] = useState(500)
   const [isResizing, setIsResizing] = useState(false)
@@ -36,6 +37,10 @@ export function ChartsPanel({ data, updateCounter }: ChartsPanelProps) {
   // Индивидуальные zoom и pan по оси Y для каждого графика
   const [yZooms, setYZooms] = useState<Map<ChartType, number>>(new Map())
   const [yPans, setYPans] = useState<Map<ChartType, number>>(new Map())
+  
+  // Общая дистанция курсора для всех графиков
+  const [sharedCursorDistance, setSharedCursorDistance] = useState<number | null>(null)
+  const [sharedMouseX, setSharedMouseX] = useState<number | null>(null)
   
   const toggleChart = (type: ChartType) => {
     const newSet = new Set(selectedCharts)
@@ -210,6 +215,13 @@ export function ChartsPanel({ data, updateCounter }: ChartsPanelProps) {
                         onXPanChange={setXPan}
                         onYZoomChange={(zoom) => setYZooms(prev => new Map(prev).set(chartType, zoom))}
                         onYPanChange={(pan) => setYPans(prev => new Map(prev).set(chartType, pan))}
+                        sharedCursorDistance={sharedCursorDistance}
+                        sharedMouseX={sharedMouseX}
+                        onSharedCursorChange={(distance, mouseX) => {
+                          setSharedCursorDistance(distance)
+                          setSharedMouseX(mouseX)
+                        }}
+                        lapOrder={lapOrder}
                       />
                     </div>
                     {index < selectedCharts.size - 1 && (
