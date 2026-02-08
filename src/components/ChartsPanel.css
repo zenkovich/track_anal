@@ -1,4 +1,4 @@
-/* Панель графиков (снизу) */
+/* Charts panel (bottom) */
 .charts-panel {
   position: relative;
   background: #222;
@@ -14,7 +14,7 @@
   height: 40px !important;
 }
 
-/* Resizer сверху панели */
+/* Resizer at top of panel */
 .charts-resizer {
   position: absolute;
   left: 0;
@@ -27,7 +27,7 @@
 }
 
 .charts-resizer:hover {
-  background: #FF6B00;
+  background: #ff6b00;
 }
 
 .charts-resizer-handle {
@@ -42,10 +42,10 @@
 }
 
 .charts-resizer:hover .charts-resizer-handle {
-  background: #FF6B00;
+  background: #ff6b00;
 }
 
-/* Заголовок панели */
+/* Panel header */
 .charts-panel-header {
   padding: 0.6rem 0.8rem;
   background: rgba(255, 255, 255, 0.03);
@@ -89,11 +89,11 @@
 }
 
 .collapse-button:hover {
-  color: #FF6B00;
+  color: #ff6b00;
   background: rgba(255, 107, 0, 0.15);
 }
 
-/* Селектор графиков иконками */
+/* Chart selector by icons */
 .chart-icons-selector {
   display: flex;
   gap: 6px;
@@ -127,7 +127,7 @@
   transform: scale(0.95);
 }
 
-/* Содержимое панели */
+/* Panel content */
 .charts-panel-content {
   overflow: hidden;
   flex: 1;
@@ -151,7 +151,7 @@
   margin: 0.5rem 0;
 }
 
-/* Контейнер графиков */
+/* Charts container */
 .charts-container {
   display: flex;
   flex-direction: column;
@@ -196,10 +196,10 @@
 }
 
 .chart-separator:hover .chart-separator-handle {
-  background: #FF6B00;
+  background: #ff6b00;
 }
 
-/* Адаптивность */
+/* Responsive */
 @media (max-width: 768px) {
   .charts-panel {
     position: absolute;

@@ -33,14 +33,14 @@
 
 .chart-reset-button:hover {
   background: rgba(255, 107, 0, 0.2);
-  color: #FF6B00;
+  color: #ff6b00;
 }
 
-/* Tooltip для графика */
+/* Chart tooltip */
 .chart-tooltip {
   position: absolute;
   background: rgba(26, 26, 26, 0.95);
-  border: 1px solid #FF6B00;
+  border: 1px solid #ff6b00;
   border-radius: 6px;
   padding: 6px 8px;
   pointer-events: none;
@@ -52,7 +52,7 @@
 .chart-tooltip-title {
   font-size: 10px;
   font-weight: 600;
-  color: #FF6B00;
+  color: #ff6b00;
   margin-bottom: 4px;
   text-transform: uppercase;
 }

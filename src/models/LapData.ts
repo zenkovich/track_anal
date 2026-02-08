@@ -1,46 +1,47 @@
 /**
- * Модель данных круга (Lap) с параметрами и видимостью
+ * Lap data model with parameters and visibility
  */
 
-import { VBODataRow } from './types'
-import { IChart, ChartType, createChart, CHART_TYPES } from './charts'
+import { VBODataRow } from "./types";
+import { IChart, ChartType, createChart, CHART_TYPES } from "./charts";
 
 /**
- * Статистика круга
+ * Lap statistics
  */
 export interface LapStats {
-  name: string          // Имя круга (например, "Lap 1")
-  distance: number      // Дистанция (метры)
-  time: number          // Время (миллисекунды)
-  maxSpeed: number      // Максимальная скорость (км/ч)
-  timeFormatted: string // Время в формате MM:SS.mmm
+  name: string; // Lap name (e.g. "Lap 1")
+  distance: number; // Distance (meters)
+  time: number; // Time (milliseconds)
+  maxSpeed: number; // Max speed (km/h)
+  timeFormatted: string; // Time in MM:SS.mmm format
 }
 
 /**
- * Данные одного круга с точками и параметрами
+ * Single lap data with points and parameters
  */
-export class LapData {
-  /** Индекс круга (0-based) */
-  readonly index: number
-  
-  /** Точки трека этого круга */
-  readonly rows: VBODataRow[]
-  
-  /** Видимость круга на карте */
-  visible: boolean = true
-  
-  /** Цвет круга */
-  readonly color: string
-  
-  /** Индексы в исходном массиве для расчета времени */
-  readonly startIdx: number
-  readonly endIdx: number
-  
-  /** Ссылка на исходный массив всех точек (для расчета времени) */
-  private readonly allRows?: VBODataRow[]
-  
-  /** Графики для этого круга */
-  private _charts: Map<ChartType, IChart> = new Map()
+export class LapData 
+{
+  /** Lap index (0-based) */
+  readonly index: number;
+
+  /** Track points of this lap */
+  readonly rows: VBODataRow[];
+
+  /** Lap visibility on map */
+  visible: boolean = true;
+
+  /** Lap color */
+  readonly color: string;
+
+  /** Indices in source array for time calculation */
+  readonly startIdx: number;
+  readonly endIdx: number;
+
+  /** Reference to source array of all points (for time calculation) */
+  private readonly allRows?: VBODataRow[];
+
+  /** Charts for this lap */
+  private _charts: Map<ChartType, IChart> = new Map();
 
   constructor(
     index: number,
@@ -48,102 +49,117 @@ export class LapData {
     color: string,
     startIdx: number = 0,
     endIdx: number = 0,
-    allRows?: VBODataRow[]
-  ) {
-    this.index = index
-    this.rows = rows
-    this.color = color
-    this.startIdx = startIdx
-    this.endIdx = endIdx
-    this.allRows = allRows
-    
-    // Инициализируем время и дистанцию от начала круга для каждой точки
-    this.initializeLapParameters()
-    
-    // Рассчитываем все графики
-    this.calculateCharts()
-  }
-  
-  /**
-   * Рассчитывает все типы графиков для этого круга
-   * @param referenceLap Референсный круг (для графиков дельт)
-   */
-  calculateCharts(referenceLap?: LapData): void {
-    // Создаем и рассчитываем график для каждого типа
-    CHART_TYPES.forEach(chartType => {
-      const chart = createChart(chartType.type)
-      chart.calculate(this, referenceLap)
-      this._charts.set(chartType.type, chart)
-    })
-  }
-  
-  /**
-   * Пересчитывает графики (например, при смене референсного круга)
-   * @param referenceLap Референсный круг
-   */
-  recalculateCharts(referenceLap?: LapData): void {
-    this._charts.forEach((chart) => {
-      chart.calculate(this, referenceLap)
-    })
-  }
-  
-  /**
-   * Получает график по типу
-   */
-  getChart(type: ChartType): IChart | undefined {
-    return this._charts.get(type)
-  }
-  
-  /**
-   * Получает все графики
-   */
-  getAllCharts(): Map<ChartType, IChart> {
-    return this._charts
-  }
-  
-  /**
-   * Инициализирует параметры времени и дистанции от начала круга для каждой точки
-   */
-  private initializeLapParameters(): void {
-    if (this.rows.length === 0) return
-    
-    const firstRow = this.rows[0]
-    const startTime = this.parseTime(firstRow.time)
-    let cumulativeDistance = 0
-    
-    this.rows.forEach((row, idx) => {
-      // Время от начала круга (всегда относительно первой точки ЭТОГО круга)
-      const rowTime = this.parseTime(row.time)
-      row.lapTimeFromStart = rowTime - startTime
-      
-      // Дистанция от начала круга
-      if (idx > 0 && row.distance) {
-        cumulativeDistance += row.distance
-      }
-      row.lapDistanceFromStart = cumulativeDistance
-    })
+    allRows?: VBODataRow[],
+  ) 
+  {
+    this.index = index;
+    this.rows = rows;
+    this.color = color;
+    this.startIdx = startIdx;
+    this.endIdx = endIdx;
+    this.allRows = allRows;
+
+    // Initialize time and distance from lap start for each point
+    this.initializeLapParameters();
+
+    // Calculate all charts
+    this.calculateCharts();
   }
 
   /**
-   * Вычисляет статистику круга
+   * Calculate all chart types for this lap
+   * @param referenceLap Reference lap (for delta charts)
    */
-  getStats(): LapStats {
-    // Расчет дистанции (сумма всех distance)
-    let distance = 0
-    for (const row of this.rows) {
-      if (row.distance) {
-        distance += row.distance
+  calculateCharts(referenceLap?: LapData): void 
+  {
+    // Create and calculate chart for each type
+    CHART_TYPES.forEach((chartType) => 
+    {
+      const chart = createChart(chartType.type);
+      chart.calculate(this, referenceLap);
+      this._charts.set(chartType.type, chart);
+    });
+  }
+
+  /**
+   * Recalculate charts (e.g. when reference lap changes)
+   * @param referenceLap Reference lap
+   */
+  recalculateCharts(referenceLap?: LapData): void 
+  {
+    this._charts.forEach((chart) => 
+    {
+      chart.calculate(this, referenceLap);
+    });
+  }
+
+  /**
+   * Get chart by type
+   */
+  getChart(type: ChartType): IChart | undefined 
+  {
+    return this._charts.get(type);
+  }
+
+  /**
+   * Get all charts
+   */
+  getAllCharts(): Map<ChartType, IChart> 
+  {
+    return this._charts;
+  }
+
+  /**
+   * Initialize time and distance from lap start for each point
+   */
+  private initializeLapParameters(): void 
+  {
+    if (this.rows.length === 0) return;
+
+    const firstRow = this.rows[0];
+    const startTime = this.parseTime(firstRow.time);
+    let cumulativeDistance = 0;
+
+    this.rows.forEach((row, idx) => 
+    {
+      // Time from lap start (always relative to first point of THIS lap)
+      const rowTime = this.parseTime(row.time);
+      row.lapTimeFromStart = rowTime - startTime;
+
+      // Distance from lap start
+      if (idx > 0 && row.distance) 
+      {
+        cumulativeDistance += row.distance;
+      }
+      row.lapDistanceFromStart = cumulativeDistance;
+    });
+  }
+
+  /**
+   * Compute lap statistics
+   */
+  getStats(): LapStats 
+  {
+    // Distance (sum of all distance)
+    let distance = 0;
+    for (const row of this.rows) 
+    {
+      if (row.distance) 
+      {
+        distance += row.distance;
       }
     }
 
-    // Расчет времени (разница между первой и последней точкой)
-    const timeMs = this.calculateTimeMs()
+    // Time (difference between first and last point)
+    const timeMs = this.calculateTimeMs();
 
-    // Максимальная скорость
-    let maxSpeed = 0
-    for (const row of this.rows) {
-      if (row.velocity > maxSpeed) {
-        maxSpeed = row.velocity
+    // Max speed
+    let maxSpeed = 0;
+    for (const row of this.rows) 
+    {
+      if (row.velocity > maxSpeed) 
+      {
+        maxSpeed = row.velocity;
       }
     }
 
@@ -152,111 +168,119 @@ export class LapData {
       distance: Math.round(distance),
       time: timeMs,
       maxSpeed: Math.round(maxSpeed),
-      timeFormatted: this.formatTime(timeMs)
-    }
+      timeFormatted: this.formatTime(timeMs),
+    };
   }
 
   /**
-   * Вычисляет время круга в миллисекундах
+   * Calculate lap time in milliseconds
    */
-  private calculateTimeMs(): number {
-    // Если есть исходный массив и индексы, используем их
-    if (this.allRows && this.startIdx >= 0 && this.endIdx > this.startIdx) {
-      const firstTimeStr = this.allRows[this.startIdx]?.time
-      const lastTimeStr = this.allRows[this.endIdx]?.time
-      
-      if (firstTimeStr && lastTimeStr) {
-        const firstTime = this.parseTime(firstTimeStr)
-        const lastTime = this.parseTime(lastTimeStr)
-        return Math.max(0, lastTime - firstTime)
+  private calculateTimeMs(): number 
+  {
+    // If we have source array and indices, use them
+    if (this.allRows && this.startIdx >= 0 && this.endIdx > this.startIdx) 
+    {
+      const firstTimeStr = this.allRows[this.startIdx]?.time;
+      const lastTimeStr = this.allRows[this.endIdx]?.time;
+
+      if (firstTimeStr && lastTimeStr) 
+      {
+        const firstTime = this.parseTime(firstTimeStr);
+        const lastTime = this.parseTime(lastTimeStr);
+        return Math.max(0, lastTime - firstTime);
       }
     }
-    
-    // Fallback: используем первую и последнюю точку круга
-    if (this.rows.length < 2) return 0
 
-    const firstTimeStr = this.rows[0].time
-    const lastTimeStr = this.rows[this.rows.length - 1].time
-    
-    const firstTime = this.parseTime(firstTimeStr)
-    const lastTime = this.parseTime(lastTimeStr)
-    
-    return Math.max(0, lastTime - firstTime)
+    // Fallback: use first and last point of lap
+    if (this.rows.length < 2) return 0;
+
+    const firstTimeStr = this.rows[0].time;
+    const lastTimeStr = this.rows[this.rows.length - 1].time;
+
+    const firstTime = this.parseTime(firstTimeStr);
+    const lastTime = this.parseTime(lastTimeStr);
+
+    return Math.max(0, lastTime - firstTime);
   }
 
   /**
-   * Парсит время из строки формата HH:MM:SS.mmm в миллисекунды
+   * Parse time from HH:MM:SS.mmm string to milliseconds
    */
-  private parseTime(timeStr: string): number {
-    if (!timeStr) return 0
-    
-    const parts = timeStr.split(':')
-    if (parts.length !== 3) return 0
+  private parseTime(timeStr: string): number 
+  {
+    if (!timeStr) return 0;
 
-    const hh = parseInt(parts[0], 10)
-    const mm = parseInt(parts[1], 10)
-    const ss = parseFloat(parts[2])
+    const parts = timeStr.split(":");
+    if (parts.length !== 3) return 0;
 
-    if (isNaN(hh) || isNaN(mm) || isNaN(ss)) return 0
+    const hh = parseInt(parts[0], 10);
+    const mm = parseInt(parts[1], 10);
+    const ss = parseFloat(parts[2]);
 
-    return (hh * 3600 + mm * 60 + ss) * 1000
+    if (isNaN(hh) || isNaN(mm) || isNaN(ss)) return 0;
+
+    return (hh * 3600 + mm * 60 + ss) * 1000;
   }
 
   /**
-   * Форматирует миллисекунды в строку M:SS.mmm (как в таблице)
+   * Format milliseconds to M:SS.mmm string (as in table)
    */
-  private formatTime(ms: number): string {
-    if (isNaN(ms) || ms < 0) return '0:00.000'
-    
-    const totalSeconds = ms / 1000
-    const minutes = Math.floor(totalSeconds / 60)
-    const secondsRemainder = totalSeconds - (minutes * 60)
-    const secWhole = Math.floor(secondsRemainder)
-    const secFrac = Math.floor((secondsRemainder - secWhole) * 1000)
+  private formatTime(ms: number): string 
+  {
+    if (isNaN(ms) || ms < 0) return "0:00.000";
 
-    return `${minutes}:${secWhole.toString().padStart(2, '0')}.${secFrac.toString().padStart(3, '0')}`
+    const totalSeconds = ms / 1000;
+    const minutes = Math.floor(totalSeconds / 60);
+    const secondsRemainder = totalSeconds - minutes * 60;
+    const secWhole = Math.floor(secondsRemainder);
+    const secFrac = Math.floor((secondsRemainder - secWhole) * 1000);
+
+    return `${minutes}:${secWhole.toString().padStart(2, "0")}.${secFrac.toString().padStart(3, "0")}`;
   }
 
   /**
-   * Переключает видимость круга
+   * Toggle lap visibility
    */
-  toggleVisibility(): void {
-    this.visible = !this.visible
+  toggleVisibility(): void 
+  {
+    this.visible = !this.visible;
   }
 
   /**
-   * Устанавливает видимость круга
+   * Set lap visibility
    */
-  setVisibility(visible: boolean): void {
-    this.visible = visible
+  setVisibility(visible: boolean): void 
+  {
+    this.visible = visible;
   }
 }
 
 /**
- * Палитра цветов для кругов (яркие, различимые цвета)
+ * Lap color palette (bright, distinguishable colors)
  */
 export const LAP_COLORS = [
-  '#FF6B00', // ярко-оранжевый
-  '#00FFD1', // неоновый циан
-  '#FF0080', // неоновый розовый
-  '#FFD700', // золотой
-  '#7FFF00', // неоновый лайм
-  '#FF1493', // глубокий розовый
-  '#00E5FF', // яркий голубой
-  '#FFB000', // янтарный
-  '#B026FF', // неоновый фиолетовый
-  '#00FF7F', // весенний зеленый
-  '#FF4500', // огненный оранжевый
-  '#39FF14', // неоновый зеленый
-  '#FF69B4', // горячий розовый
-  '#00BFFF', // глубокий небесно-голубой
-  '#FFAA00', // оранжево-желтый
-  '#DA70D6', // орхидея
-]
+  "#FF6B00", // bright orange
+  "#00FFD1", // neon cyan
+  "#FF0080", // neon pink
+  "#FFD700", // gold
+  "#7FFF00", // neon lime
+  "#FF1493", // deep pink
+  "#00E5FF", // bright cyan
+  "#FFB000", // amber
+  "#B026FF", // neon purple
+  "#00FF7F", // spring green
+  "#FF4500", // orange red
+  "#39FF14", // neon green
+  "#FF69B4", // hot pink
+  "#00BFFF", // deep sky blue
+  "#FFAA00", // orange yellow
+  "#DA70D6", // orchid
+];
 
 /**
- * Получает цвет для круга по индексу
+ * Get lap color by index
  */
-export function getLapColor(lapIndex: number): string {
-  return LAP_COLORS[lapIndex % LAP_COLORS.length]
+export function getLapColor(lapIndex: number): string 
+{
+  return LAP_COLORS[lapIndex % LAP_COLORS.length];
 }

@@ -1,102 +1,108 @@
 /**
- * Интерфейс для графиков сравнения кругов
+ * Interface for lap comparison charts
  */
 
-import { LapData } from '../LapData'
+import { LapData } from "../LapData";
 
 /**
- * Точка данных графика
+ * Chart data point
  */
 export interface ChartDataPoint {
-  distance: number  // Дистанция от начала круга (м)
-  value: number     // Значение параметра
+  distance: number; // Distance from lap start (m)
+  value: number; // Parameter value
 }
 
 /**
- * Интерфейс графика
+ * Chart interface
  */
 export interface IChart {
-  /** Название графика */
-  readonly name: string
-  
-  /** Единицы измерения */
-  readonly unit: string
-  
-  /** Точки данных графика */
-  readonly points: ChartDataPoint[]
-  
-  /** Требуется ли референсный круг для расчета */
-  readonly needsReference: boolean
-  
-  /** 
-   * Больше значит лучше?
-   * true: большие значения = лучше (зеленая дельта для положительных)
-   * false: меньшие значения = лучше (зеленая дельта для отрицательных)
-   */
-  readonly higherIsBetter: boolean
-  
+  /** Chart name */
+  readonly name: string;
+
+  /** Unit of measurement */
+  readonly unit: string;
+
+  /** Chart data points */
+  readonly points: ChartDataPoint[];
+
+  /** Whether reference lap is required for calculation */
+  readonly needsReference: boolean;
+
   /**
-   * Рассчитывает график для круга
-   * @param lap Круг для расчета
-   * @param referenceLap Референсный круг (опционально, для дельт)
+   * Higher is better?
+   * true: higher values = better (green delta for positive)
+   * false: lower values = better (green delta for negative)
    */
-  calculate(lap: LapData, referenceLap?: LapData): void
-  
+  readonly higherIsBetter: boolean;
+
   /**
-   * Получает минимальное значение Y
+   * Calculate chart for a lap
+   * @param lap Lap to calculate
+   * @param referenceLap Reference lap (optional, for deltas)
    */
-  getMinValue(): number
-  
+  calculate(lap: LapData, referenceLap?: LapData): void;
+
   /**
-   * Получает максимальное значение Y
+   * Get minimum Y value
    */
-  getMaxValue(): number
-  
+  getMinValue(): number;
+
   /**
-   * Получает значение в точке по дистанции (с интерполяцией)
-   * @param distance Дистанция от начала круга (м)
+   * Get maximum Y value
    */
-  getValueAtDistance(distance: number): number | null
+  getMaxValue(): number;
+
+  /**
+   * Get value at distance (with interpolation)
+   * @param distance Distance from lap start (m)
+   */
+  getValueAtDistance(distance: number): number | null;
 }
 
 /**
- * Базовый абстрактный класс для графиков
+ * Base abstract class for charts
  */
-export abstract class BaseChart implements IChart {
-  abstract readonly name: string
-  abstract readonly unit: string
-  readonly needsReference: boolean = false
-  abstract readonly higherIsBetter: boolean
-  
-  points: ChartDataPoint[] = []
-  
-  abstract calculate(lap: LapData, referenceLap?: LapData): void
-  
-  getMinValue(): number {
-    if (this.points.length === 0) return 0
-    return Math.min(...this.points.map(p => p.value))
+export abstract class BaseChart implements IChart 
+{
+  abstract readonly name: string;
+  abstract readonly unit: string;
+  readonly needsReference: boolean = false;
+  abstract readonly higherIsBetter: boolean;
+
+  points: ChartDataPoint[] = [];
+
+  abstract calculate(lap: LapData, referenceLap?: LapData): void;
+
+  getMinValue(): number 
+  {
+    if (this.points.length === 0) return 0;
+    return Math.min(...this.points.map((p) => p.value));
   }
-  
-  getMaxValue(): number {
-    if (this.points.length === 0) return 0
-    return Math.max(...this.points.map(p => p.value))
+
+  getMaxValue(): number 
+  {
+    if (this.points.length === 0) return 0;
+    return Math.max(...this.points.map((p) => p.value));
   }
-  
-  getValueAtDistance(distance: number): number | null {
-    if (this.points.length === 0) return null
-    
-    // Находим ближайшие точки для интерполяции
-    for (let i = 1; i < this.points.length; i++) {
-      const p1 = this.points[i - 1]
-      const p2 = this.points[i]
-      
-      if (distance >= p1.distance && distance <= p2.distance) {
-        // Линейная интерполяция
-        const t = (distance - p1.distance) / (p2.distance - p1.distance)
-        return p1.value + t * (p2.value - p1.value)
+
+  getValueAtDistance(distance: number): number | null 
+  {
+    if (this.points.length === 0) return null;
+
+    // Find nearest points for interpolation
+    for (let i = 1; i < this.points.length; i++) 
+    {
+      const p1 = this.points[i - 1];
+      const p2 = this.points[i];
+
+      if (distance >= p1.distance && distance <= p2.distance) 
+      {
+        // Linear interpolation
+        const t = (distance - p1.distance) / (p2.distance - p1.distance);
+        return p1.value + t * (p2.value - p1.value);
       }
     }
-    
-    return null
+
+    return null;
   }
 }

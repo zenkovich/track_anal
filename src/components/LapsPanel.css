@@ -1,4 +1,4 @@
-/* Боковая панель кругов (справа) */
+/* Laps side panel (right) */
 .laps-panel-side {
   position: relative;
   background: #222;
@@ -15,7 +15,7 @@
   width: 40px !important;
 }
 
-/* Resizer слева от панели */
+/* Resizer left of panel */
 .laps-resizer-side {
   position: absolute;
   left: 0;
@@ -28,7 +28,7 @@
 }
 
 .laps-resizer-side:hover {
-  background: #FF6B00;
+  background: #ff6b00;
 }
 
 .laps-resizer-handle-side {
@@ -43,10 +43,10 @@
 }
 
 .laps-resizer-side:hover .laps-resizer-handle-side {
-  background: #FF6B00;
+  background: #ff6b00;
 }
 
-/* Заголовок панели */
+/* Panel header */
 .laps-panel-header-side {
   padding: 0.6rem 0.8rem;
   background: rgba(255, 255, 255, 0.03);
@@ -90,7 +90,7 @@
 }
 
 .collapse-button-side:hover {
-  color: #FF6B00;
+  color: #ff6b00;
   background: rgba(255, 107, 0, 0.15);
 }
 
@@ -112,17 +112,17 @@
 
 .lap-checkbox-all:hover {
   background: rgba(255, 107, 0, 0.1);
-  color: #FF6B00;
+  color: #ff6b00;
 }
 
 .lap-checkbox-all input[type="checkbox"] {
   cursor: pointer;
   width: 14px;
   height: 14px;
-  accent-color: #FF6B00;
+  accent-color: #ff6b00;
 }
 
-/* Кнопки в заголовке (фильтр, топ N) */
+/* Header buttons (filter, top N) */
 .filter-button {
   width: 26px;
   height: 26px;
@@ -141,14 +141,14 @@
 
 .filter-button:hover {
   background: rgba(255, 107, 0, 0.15);
-  color: #FF6B00;
+  color: #ff6b00;
 }
 
 .filter-button:active {
   transform: scale(0.95);
 }
 
-/* Содержимое панели */
+/* Panel content */
 .laps-panel-content-side {
   overflow-y: auto;
   overflow-x: hidden;
@@ -156,7 +156,7 @@
   min-height: 0;
 }
 
-/* Таблица кругов */
+/* Laps table */
 .laps-table-side {
   width: 100%;
   border-collapse: collapse;
@@ -188,7 +188,7 @@
 }
 
 .laps-table-side th.sortable:hover {
-  color: #FF6B00;
+  color: #ff6b00;
   background: rgba(255, 107, 0, 0.1);
 }
 
@@ -219,7 +219,7 @@
   vertical-align: middle;
 }
 
-/* Колонка Solo */
+/* Solo column */
 .col-solo {
   width: 30px;
   padding: 0 !important;
@@ -246,7 +246,7 @@
 
 .solo-button:hover {
   background: rgba(255, 107, 0, 0.2);
-  color: #FF6B00;
+  color: #ff6b00;
 }
 
 .solo-button:active {
@@ -254,7 +254,7 @@
   transform: scale(0.95);
 }
 
-/* Колонка чекбокса */
+/* Checkbox column */
 .col-checkbox {
   width: 35px;
   text-align: center;
@@ -264,10 +264,10 @@
   cursor: pointer;
   width: 14px;
   height: 14px;
-  accent-color: #FF6B00;
+  accent-color: #ff6b00;
 }
 
-/* Колонка цвета */
+/* Color column */
 .col-color {
   width: 30px;
   text-align: center;
@@ -281,19 +281,19 @@
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-/* Колонка Lap */
+/* Lap column */
 .col-lap {
   text-align: left;
   font-weight: 600;
   color: #e0e0e0;
 }
 
-/* Колонка Distance */
+/* Distance column */
 .col-distance {
   text-align: right;
 }
 
-/* Колонка Time */
+/* Time column */
 .col-time {
   text-align: right;
 }
@@ -312,12 +312,12 @@
   opacity: 0.85;
 }
 
-/* Колонка Speed */
+/* Speed column */
 .col-speed {
   text-align: right;
 }
 
-/* Адаптивность */
+/* Responsive */
 @media (max-width: 1024px) {
   .laps-panel-side {
     width: 320px !important;

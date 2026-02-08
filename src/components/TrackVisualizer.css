@@ -17,11 +17,11 @@
   touch-action: none;
 }
 
-/* Tooltip с параметрами траектории */
+/* Trajectory parameters tooltip */
 .track-tooltip {
   position: absolute;
   background: rgba(26, 26, 26, 0.95);
-  border: 1px solid #FF6B00;
+  border: 1px solid #ff6b00;
   border-radius: 8px;
   padding: 8px;
   pointer-events: none;
@@ -60,7 +60,7 @@
 .track-tooltip-lap {
   font-size: 11px;
   font-weight: 600;
-  color: #FF6B00;
+  color: #ff6b00;
   text-transform: uppercase;
 }
 
@@ -120,7 +120,7 @@
 
 .debug-toggle-button:hover {
   background: rgba(255, 107, 0, 0.15);
-  color: #FF6B00;
+  color: #ff6b00;
 }
 
 .debug-panel {
@@ -169,7 +169,7 @@
   margin: 0 0 8px 0;
   font-size: 12px;
   font-weight: 600;
-  color: #FF6B00;
+  color: #ff6b00;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -201,7 +201,7 @@
   user-select: none;
 }
 
-/* Панель настроек */
+/* Settings panel */
 .settings-panel {
   left: 20px;
   right: auto;
@@ -235,7 +235,7 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #FF6B00;
+  background: #ff6b00;
   cursor: pointer;
   border: 2px solid #1a1a1a;
 }
@@ -244,17 +244,17 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #FF6B00;
+  background: #ff6b00;
   cursor: pointer;
   border: 2px solid #1a1a1a;
 }
 
 .setting-slider:hover::-webkit-slider-thumb {
-  background: #FF8533;
+  background: #ff8533;
 }
 
 .setting-slider:hover::-moz-range-thumb {
-  background: #FF8533;
+  background: #ff8533;
 }
 
 .reset-button,
@@ -274,7 +274,7 @@
 .reset-button:hover,
 .map-toggle-button:hover {
   background: rgba(255, 107, 0, 0.15);
-  color: #FF6B00;
+  color: #ff6b00;
 }
 
 .reset-button:active,
@@ -331,7 +331,7 @@
 
 .close-button:hover {
   background: rgba(255, 107, 0, 0.15);
-  color: #FF6B00;
+  color: #ff6b00;
 }
 
 .location-info {

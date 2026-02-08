@@ -1,27 +1,31 @@
 /**
- * График времени относительно дистанции
+ * Time vs distance chart
  */
 
-import { BaseChart } from './ChartInterface'
-import { LapData } from '../LapData'
+import { BaseChart } from "./ChartInterface";
+import { LapData } from "../LapData";
 
-export class TimeChart extends BaseChart {
-  readonly name = 'Time'
-  readonly unit = 's'
-  readonly needsReference = false
-  readonly higherIsBetter = false // Меньше время = лучше
-  
-  calculate(lap: LapData): void {
-    this.points = []
-    
-    // Для каждой точки круга создаем точку графика
-    lap.rows.forEach(row => {
-      if (row.lapDistanceFromStart !== undefined && row.lapTimeFromStart !== undefined) {
+export class TimeChart extends BaseChart 
+{
+  readonly name = "Time";
+  readonly unit = "s";
+  readonly needsReference = false;
+  readonly higherIsBetter = false; // Lower time = better
+
+  calculate(lap: LapData): void 
+  {
+    this.points = [];
+
+    // Create chart point for each lap point
+    lap.rows.forEach((row) => 
+    {
+      if (row.lapDistanceFromStart !== undefined && row.lapTimeFromStart !== undefined) 
+      {
         this.points.push({
           distance: row.lapDistanceFromStart,
-          value: row.lapTimeFromStart / 1000 // Конвертируем мс в секунды
-        })
+          value: row.lapTimeFromStart / 1000, // Convert ms to seconds
+        });
       }
-    })
+    });
   }
 }

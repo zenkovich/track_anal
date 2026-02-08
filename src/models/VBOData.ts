@@ -1,279 +1,299 @@
 /**
- * Модель данных VBO файла
+ * VBO file data model
  */
 
-import { VBOHeader, VBODataRow, BoundingBox, StartFinishLine } from './types'
-import { LapData, getLapColor } from './LapData'
+import { VBOHeader, VBODataRow, BoundingBox, StartFinishLine } from "./types";
+import { LapData, getLapColor } from "./LapData";
 
 /**
- * Основной класс данных VBO файла со всеми треками и кругами
+ * Main VBO file data class with all tracks and laps
  */
-export class VBOData {
-  /** Заголовок файла с метаданными */
-  readonly header: VBOHeader
-  
-  /** Все точки трека */
-  readonly rows: VBODataRow[]
-  
-  /** Границы трека (bounding box) */
-  readonly boundingBox: BoundingBox
-  
-  /** Линия старт/финиш (если определена) */
-  readonly startFinish?: StartFinishLine
-  
-  /** 
-   * Круги трека с параметрами и видимостью
-   * 
-   * ВАЖНО: Видимость кругов (lap.visible) - это общее состояние для всего приложения
-   * Все компоненты используют это состояние:
-   * - LapsPanel: чекбоксы управляют lap.visible
-   * - TrackVisualizer: отрисовывает только круги с lap.visible=true
-   * - ChartsPanel: отображает графики только для кругов с lap.visible=true
-   * - Tooltip: показывает данные только для кругов с lap.visible=true
+export class VBOData 
+{
+  /** File header with metadata */
+  readonly header: VBOHeader;
+
+  /** All track points */
+  readonly rows: VBODataRow[];
+
+  /** Track bounds (bounding box) */
+  readonly boundingBox: BoundingBox;
+
+  /** Start/finish line (if detected) */
+  readonly startFinish?: StartFinishLine;
+
+  /**
+   * Track laps with parameters and visibility
+   *
+   * IMPORTANT: Lap visibility (lap.visible) is shared app state.
+   * All components use it:
+   * - LapsPanel: checkboxes control lap.visible
+   * - TrackVisualizer: draws only laps with lap.visible=true
+   * - ChartsPanel: shows charts only for laps with lap.visible=true
+   * - Tooltip: shows data only for laps with lap.visible=true
    */
-  private _laps: LapData[]
+  private _laps: LapData[];
 
   constructor(
     header: VBOHeader,
     rows: VBODataRow[],
     boundingBox: BoundingBox,
     startFinish?: StartFinishLine,
-    laps: LapData[] = []
-  ) {
-    this.header = header
-    this.rows = rows
-    this.boundingBox = boundingBox
-    this.startFinish = startFinish
-    this._laps = laps
+    laps: LapData[] = [],
+  ) 
+  {
+    this.header = header;
+    this.rows = rows;
+    this.boundingBox = boundingBox;
+    this.startFinish = startFinish;
+    this._laps = laps;
   }
 
   /**
-   * Получает все круги
+   * Get all laps
    */
-  get laps(): LapData[] {
-    return this._laps
+  get laps(): LapData[] 
+  {
+    return this._laps;
   }
 
   /**
-   * Устанавливает круги (используется парсером)
+   * Set laps (used by parser)
    */
-  setLaps(laps: LapData[]): void {
-    this._laps = laps
+  setLaps(laps: LapData[]): void 
+  {
+    this._laps = laps;
   }
 
   /**
-   * Получает видимые круги
+   * Get visible laps
    */
-  getVisibleLaps(): LapData[] {
-    return this._laps.filter(lap => lap.visible)
+  getVisibleLaps(): LapData[] 
+  {
+    return this._laps.filter((lap) => lap.visible);
   }
 
   /**
-   * Находит самый быстрый круг среди видимых
-   * @returns Индекс самого быстрого круга или null если нет видимых
+   * Find fastest lap among visible
+   * @returns Index of fastest lap or null if none visible
    */
-  getFastestVisibleLap(): number | null {
-    const visibleLaps = this.getVisibleLaps()
-    if (visibleLaps.length === 0) return null
-    
-    let fastestLap = visibleLaps[0]
-    let fastestTime = fastestLap.getStats().time
-    
-    for (const lap of visibleLaps) {
-      const stats = lap.getStats()
-      if (stats.time > 0 && stats.time < fastestTime) {
-        fastestTime = stats.time
-        fastestLap = lap
+  getFastestVisibleLap(): number | null 
+  {
+    const visibleLaps = this.getVisibleLaps();
+    if (visibleLaps.length === 0) return null;
+
+    let fastestLap = visibleLaps[0];
+    let fastestTime = fastestLap.getStats().time;
+
+    for (const lap of visibleLaps) 
+    {
+      const stats = lap.getStats();
+      if (stats.time > 0 && stats.time < fastestTime) 
+      {
+        fastestTime = stats.time;
+        fastestLap = lap;
       }
     }
-    
-    return fastestLap.index
+
+    return fastestLap.index;
   }
 
   /**
-   * Вычисляет медиану времен кругов
+   * Compute median of lap times
    */
-  private getMedianTime(): number | null {
+  private getMedianTime(): number | null 
+  {
     const times = this._laps
-      .map(l => l.getStats().time)
-      .filter(time => time > 0)
-      .sort((a, b) => a - b)
-    
-    if (times.length === 0) return null
-    
-    const mid = Math.floor(times.length / 2)
-    if (times.length % 2 === 0) {
-      return (times[mid - 1] + times[mid]) / 2
-    } else {
-      return times[mid]
+      .map((l) => l.getStats().time)
+      .filter((time) => time > 0)
+      .sort((a, b) => a - b);
+
+    if (times.length === 0) return null;
+
+    const mid = Math.floor(times.length / 2);
+    if (times.length % 2 === 0) 
+    {
+      return (times[mid - 1] + times[mid]) / 2;
+    }
+    else 
+    {
+      return times[mid];
     }
   }
 
   /**
-   * Определяет является ли круг аномальным (outlier)
-   * На основе отклонения от медианы
-   * @param lapIndex Индекс круга
-   * @param tolerancePercent Допустимое отклонение от медианы в процентах (по умолчанию 15%)
-   * @returns true если круг аномальный
+   * Check if lap is outlier based on deviation from median
+   * @param lapIndex Lap index
+   * @param tolerancePercent Allowed deviation from median in percent (default 15%)
+   * @returns true if lap is outlier
    */
-  isOutlier(lapIndex: number, tolerancePercent: number = 15): boolean {
-    const lap = this._laps[lapIndex]
-    if (!lap) return false
-    
-    if (this._laps.length < 3) return false
-    
-    const median = this.getMedianTime()
-    if (median === null) return false
-    
-    const lapTime = lap.getStats().time
-    if (lapTime <= 0) return false
-    
-    // Вычисляем допустимый диапазон
-    const tolerance = median * (tolerancePercent / 100)
-    const minTime = median - tolerance
-    const maxTime = median + tolerance
-    
-    return lapTime < minTime || lapTime > maxTime
+  isOutlier(lapIndex: number, tolerancePercent: number = 15): boolean 
+  {
+    const lap = this._laps[lapIndex];
+    if (!lap) return false;
+
+    if (this._laps.length < 3) return false;
+
+    const median = this.getMedianTime();
+    if (median === null) return false;
+
+    const lapTime = lap.getStats().time;
+    if (lapTime <= 0) return false;
+
+    // Compute allowed range
+    const tolerance = median * (tolerancePercent / 100);
+    const minTime = median - tolerance;
+    const maxTime = median + tolerance;
+
+    return lapTime < minTime || lapTime > maxTime;
   }
 
   /**
-   * Применяет эвристику для автоматической фильтрации кругов
-   * Скрывает круги которые отличаются от медианы более чем на tolerancePercent
-   * @param tolerancePercent Допустимое отклонение от медианы в процентах (по умолчанию 15%)
+   * Apply heuristic to auto-filter laps: hide laps deviating from median by more than tolerancePercent
+   * @param tolerancePercent Allowed deviation from median in percent (default 15%)
    */
-  applyTimeHeuristics(tolerancePercent: number = 15): void {
-    if (this._laps.length < 3) return
-    
-    const median = this.getMedianTime()
-    if (median === null) return
-    
-    const tolerance = median * (tolerancePercent / 100)
-    const minTime = median - tolerance
-    const maxTime = median + tolerance
-    
-    console.log(`[Heuristics] Total laps: ${this._laps.length}`)
-    console.log(`[Heuristics] Median time: ${(median / 1000).toFixed(2)}s`)
-    console.log(`[Heuristics] Tolerance: ±${tolerancePercent}% (±${(tolerance / 1000).toFixed(2)}s)`)
-    console.log(`[Heuristics] Valid range: ${(minTime / 1000).toFixed(2)}s - ${(maxTime / 1000).toFixed(2)}s`)
-    
-    // Скрываем круги вне диапазона
-    let hiddenCount = 0
-    this._laps.forEach(lap => {
-      const stats = lap.getStats()
-      if (stats.time > 0 && (stats.time < minTime || stats.time > maxTime)) {
-        lap.setVisibility(false)
-        hiddenCount++
+  applyTimeHeuristics(tolerancePercent: number = 15): void 
+  {
+    if (this._laps.length < 3) return;
+
+    const median = this.getMedianTime();
+    if (median === null) return;
+
+    const tolerance = median * (tolerancePercent / 100);
+    const minTime = median - tolerance;
+    const maxTime = median + tolerance;
+
+    console.log(`[Heuristics] Total laps: ${this._laps.length}`);
+    console.log(`[Heuristics] Median time: ${(median / 1000).toFixed(2)}s`);
+    console.log(
+      `[Heuristics] Tolerance: ±${tolerancePercent}% (±${(tolerance / 1000).toFixed(2)}s)`,
+    );
+    console.log(
+      `[Heuristics] Valid range: ${(minTime / 1000).toFixed(2)}s - ${(maxTime / 1000).toFixed(2)}s`,
+    );
+
+    // Hide laps outside range
+    let hiddenCount = 0;
+    this._laps.forEach((lap) => 
+    {
+      const stats = lap.getStats();
+      if (stats.time > 0 && (stats.time < minTime || stats.time > maxTime)) 
+      {
+        lap.setVisibility(false);
+        hiddenCount++;
       }
-    })
-    
-    console.log(`[Heuristics] Hidden ${hiddenCount} outlier laps`)
+    });
+
+    console.log(`[Heuristics] Hidden ${hiddenCount} outlier laps`);
   }
 
   /**
-   * Получает индексы видимых кругов (для обратной совместимости)
+   * Get indices of visible laps (for backward compatibility)
    */
-  getVisibleLapIndices(): Set<number> {
-    return new Set(
-      this._laps
-        .filter(lap => lap.visible)
-        .map(lap => lap.index)
-    )
+  getVisibleLapIndices(): Set<number> 
+  {
+    return new Set(this._laps.filter((lap) => lap.visible).map((lap) => lap.index));
   }
 
   /**
-   * Переключает видимость круга по индексу
+   * Toggle lap visibility by index
    */
-  toggleLapVisibility(lapIndex: number): void {
-    const lap = this._laps[lapIndex]
-    if (lap) {
-      lap.toggleVisibility()
-      // Пересчитываем графики при изменении видимости (может измениться лучший круг)
-      this.recalculateChartsForAllLaps()
+  toggleLapVisibility(lapIndex: number): void 
+  {
+    const lap = this._laps[lapIndex];
+    if (lap) 
+    {
+      lap.toggleVisibility();
+      // Recalculate charts when visibility changes (fastest lap may change)
+      this.recalculateChartsForAllLaps();
     }
   }
-  
+
   /**
-   * Пересчитывает графики для всех кругов (при изменении лучшего круга)
+   * Recalculate charts for all laps (when best lap changes)
    */
-  recalculateChartsForAllLaps(): void {
-    const fastestLapIndex = this.getFastestVisibleLap()
-    const referenceLap = fastestLapIndex !== null ? this._laps[fastestLapIndex] : undefined
-    
-    this._laps.forEach(lap => {
-      lap.recalculateCharts(referenceLap)
-    })
+  recalculateChartsForAllLaps(): void 
+  {
+    const fastestLapIndex = this.getFastestVisibleLap();
+    const referenceLap = fastestLapIndex !== null ? this._laps[fastestLapIndex] : undefined;
+
+    this._laps.forEach((lap) => 
+    {
+      lap.recalculateCharts(referenceLap);
+    });
   }
 
   /**
-   * Показывает/скрывает все круги
+   * Show/hide all laps
    */
-  setAllLapsVisibility(visible: boolean): void {
-    this._laps.forEach(lap => lap.setVisibility(visible))
-    // Пересчитываем графики при массовом изменении
-    this.recalculateChartsForAllLaps()
+  setAllLapsVisibility(visible: boolean): void 
+  {
+    this._laps.forEach((lap) => lap.setVisibility(visible));
+    // Recalculate charts on bulk change
+    this.recalculateChartsForAllLaps();
   }
 
   /**
-   * Получает метаданные файла
+   * Get file metadata
    */
-  getMetadata(): Record<string, string> {
-    const metadata: Record<string, string> = {}
+  getMetadata(): Record<string, string> 
+  {
+    const metadata: Record<string, string> = {};
 
-    // Парсим комментарии
-    this.header.comments.forEach(comment => {
-      const colonIndex = comment.indexOf(':')
-      if (colonIndex > 0) {
-        const key = comment.substring(0, colonIndex).trim()
-        const value = comment.substring(colonIndex + 1).trim()
-        metadata[key] = value
+    // Parse comments
+    this.header.comments.forEach((comment) => 
+    {
+      const colonIndex = comment.indexOf(":");
+      if (colonIndex > 0) 
+      {
+        const key = comment.substring(0, colonIndex).trim();
+        const value = comment.substring(colonIndex + 1).trim();
+        metadata[key] = value;
       }
-    })
+    });
 
-    // Дата создания файла
-    if (this.header.fileCreated) {
-      metadata['File Created'] = this.header.fileCreated.replace('File created on ', '')
+    // File creation date
+    if (this.header.fileCreated) 
+    {
+      metadata["File Created"] = this.header.fileCreated.replace("File created on ", "");
     }
 
-    // Общая статистика
-    metadata['Total Points'] = this.rows.length.toString()
-    metadata['Laps'] = this._laps.length.toString()
+    // Overall stats
+    metadata["Total Points"] = this.rows.length.toString();
+    metadata["Laps"] = this._laps.length.toString();
 
-    return metadata
+    return metadata;
   }
 
   /**
-   * Получает модель файла из устаревшего формата (для обратной совместимости)
+   * Create model from legacy format (for backward compatibility)
    */
   static fromLegacyFormat(data: {
-    header: VBOHeader
-    rows: VBODataRow[]
-    boundingBox: BoundingBox
-    startFinish?: StartFinishLine
+    header: VBOHeader;
+    rows: VBODataRow[];
+    boundingBox: BoundingBox;
+    startFinish?: StartFinishLine;
     laps: Array<{
-      index: number
-      startIdx: number
-      endIdx: number
-      rows: VBODataRow[]
-    }>
-  }): VBOData {
-    // Преобразуем старые Lap в LapData
-    const laps = data.laps.map((lap, index) => 
-      new LapData(
-        lap.index,
-        lap.rows,
-        getLapColor(index),
-        lap.startIdx,
-        lap.endIdx,
-        data.rows // Передаем исходный массив
-      )
-    )
+      index: number;
+      startIdx: number;
+      endIdx: number;
+      rows: VBODataRow[];
+    }>;
+  }): VBOData 
+  {
+    // Convert legacy Lap to LapData
+    const laps = data.laps.map(
+      (lap, index) =>
+        new LapData(
+          lap.index,
+          lap.rows,
+          getLapColor(index),
+          lap.startIdx,
+          lap.endIdx,
+          data.rows, // Pass source array
+        ),
+    );
 
-    return new VBOData(
-      data.header,
-      data.rows,
-      data.boundingBox,
-      data.startFinish,
-      laps
-    )
+    return new VBOData(data.header, data.rows, data.boundingBox, data.startFinish, laps);
   }
 }
