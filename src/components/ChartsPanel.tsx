@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { VBOData } from "../models/VBOData";
-import { GraphIcon, VelocityIcon, TimeIcon, TimeDeltaIcon, VelocityDeltaIcon } from "./Icons";
+import { GraphIcon, VelocityIcon, TimeDeltaIcon, VelocityDeltaIcon } from "./Icons";
 import { ChartView } from "./ChartView";
 import { ChartType, CHART_TYPES } from "../models/charts";
 import "./ChartsPanel.css";
@@ -8,7 +8,6 @@ import "./ChartsPanel.css";
 // Icon mapping
 const CHART_ICONS: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
   VelocityIcon: VelocityIcon,
-  TimeIcon: TimeIcon,
   TimeDeltaIcon: TimeDeltaIcon,
   VelocityDeltaIcon: VelocityDeltaIcon,
 };
@@ -49,6 +48,16 @@ export function ChartsPanel({
 
   // Local mouse position for tooltip
   const [localMouseX, setLocalMouseX] = useState<number | null>(null);
+  const validChartTypes = useMemo(() => new Set(CHART_TYPES.map((ct) => ct.type)), []);
+
+  useEffect(() => 
+  {
+    setSelectedCharts((prev) => 
+    {
+      const next = new Set(Array.from(prev).filter((type) => validChartTypes.has(type)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [validChartTypes]);
 
   const toggleChart = (type: ChartType) => 
   {

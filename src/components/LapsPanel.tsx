@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { VBOData } from "../models/VBOData";
 import { FilterIcon, FilterOffIcon, TopNIcon, FilterSmallIcon } from "./Icons";
 import "./LapsPanel.css";
@@ -54,39 +54,42 @@ export function LapsPanel({
     }
   };
 
-  // Get displayed laps (after filtering)
-  let displayedLaps = data.laps.filter(
-    (lap) => !filterOutliers || !data.isOutlier(lap.index, tolerancePercent),
-  );
-
-  // Apply sort
-  if (sortField) 
+  const displayedLaps = useMemo(() => 
   {
-    displayedLaps = [...displayedLaps].sort((a, b) => 
+    let laps = data.laps.filter(
+      (lap) => !filterOutliers || !data.isOutlier(lap.index, tolerancePercent),
+    );
+
+    if (sortField) 
     {
-      const statsA = a.getStats();
-      const statsB = b.getStats();
-
-      let compareValue = 0;
-      switch (sortField) 
+      laps = [...laps].sort((a, b) => 
       {
-        case "lap":
-          compareValue = a.index - b.index;
-          break;
-        case "distance":
-          compareValue = statsA.distance - statsB.distance;
-          break;
-        case "time":
-          compareValue = statsA.time - statsB.time;
-          break;
-        case "speed":
-          compareValue = statsA.maxSpeed - statsB.maxSpeed;
-          break;
-      }
+        const statsA = a.getStats();
+        const statsB = b.getStats();
 
-      return sortDirection === "asc" ? compareValue : -compareValue;
-    });
-  }
+        let compareValue = 0;
+        switch (sortField) 
+        {
+          case "lap":
+            compareValue = a.index - b.index;
+            break;
+          case "distance":
+            compareValue = statsA.distance - statsB.distance;
+            break;
+          case "time":
+            compareValue = statsA.time - statsB.time;
+            break;
+          case "speed":
+            compareValue = statsA.maxSpeed - statsB.maxSpeed;
+            break;
+        }
+
+        return sortDirection === "asc" ? compareValue : -compareValue;
+      });
+    }
+
+    return laps;
+  }, [data, updateCounter, filterOutliers, tolerancePercent, sortField, sortDirection]);
 
   // Check if all displayed laps are selected
   const allDisplayedSelected =
@@ -166,12 +169,16 @@ export function LapsPanel({
   };
 
   // Update lap order when sort or filters change
+  const lastOrderRef = useRef<string | null>(null);
+
   useEffect(() => 
   {
+    if (!onLapOrderChange) return;
     const order = displayedLaps.map((lap) => lap.index);
-    onLapOrderChange?.(order);
-
-    console.log(`[LapsPanel] Order updated: [${order.join(", ")}]`);
+    const orderKey = order.join(",");
+    if (orderKey === lastOrderRef.current) return;
+    lastOrderRef.current = orderKey;
+    onLapOrderChange(order);
   }, [displayedLaps, onLapOrderChange]);
 
   // Force re-render when updateCounter changes

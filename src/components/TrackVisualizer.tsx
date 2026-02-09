@@ -676,14 +676,35 @@ export function TrackVisualizer({
         });
       }
 
-      setHoveredPoints(projectedPoints);
+      const needsUpdate =
+        hoveredPoints.length !== projectedPoints.length ||
+        hoveredPoints.some((a, i) => 
+        {
+          const b = projectedPoints[i];
+          return (
+            !b ||
+            a.lapIndex !== b.lapIndex ||
+            Math.abs(a.distance - b.distance) > 0.5 ||
+            Math.abs(a.x - b.x) > 0.5 ||
+            Math.abs(a.y - b.y) > 0.5
+          );
+        });
+
+      if (needsUpdate) 
+      {
+        setHoveredPoints(projectedPoints);
+      }
     }
     else if (projectionDistance === null) 
     {
-      // Clear when projectionDistance becomes null
-      setHoveredPoints([]);
+      // Clear only when there's no local hover
+      if (mousePos !== null) return;
+      if (hoveredPoints.length > 0) 
+      {
+        setHoveredPoints([]);
+      }
     }
-  }, [projectionDistance, data, baseParams, viewState, lapOrder, mousePos]);
+  }, [projectionDistance, data, baseParams, viewState, lapOrder, mousePos, hoveredPoints]);
 
   const handleMouseUp = useCallback(() => setIsDragging(false), []);
   const handleMouseLeave = useCallback(() => 

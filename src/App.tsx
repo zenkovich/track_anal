@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import "./App.css";
 import { TrackVisualizer } from "./components/TrackVisualizer";
 import { LapsPanel } from "./components/LapsPanel";
@@ -30,6 +30,19 @@ function App()
     setSortField(field);
     setSortDirection(direction);
   };
+
+  const handleLapOrderChange = useCallback((order: number[]) => 
+  {
+    setLapOrder((prev) => 
+    {
+      if (prev.length !== order.length) return order;
+      for (let i = 0; i < prev.length; i++) 
+      {
+        if (prev[i] !== order[i]) return order;
+      }
+      return prev;
+    });
+  }, []);
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => 
   {
@@ -242,7 +255,7 @@ function App()
                 sortField={sortField}
                 sortDirection={sortDirection}
                 onSortChange={handleSortChange}
-                onLapOrderChange={setLapOrder}
+                onLapOrderChange={handleLapOrderChange}
               />
             </div>
             <ChartsPanel
