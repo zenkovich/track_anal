@@ -40,9 +40,18 @@ export class VelocityDeltaChart extends BaseChart
       // Compute delta (km/h)
       const delta = row.velocity - refVelocity;
 
+      const lastRow = lap.rows[lap.rows.length - 1];
+      const totalDistance = lastRow?.lapDistanceFromStart ?? 0;
+      const dist = row.lapDistanceFromStart;
+      const timeMs = row.lapTimeFromStart ?? 0;
+      const normalized = totalDistance > 0 ? dist / totalDistance : 0;
+
       this.points.push({
-        distance: row.lapDistanceFromStart,
+        distance: dist,
         value: delta,
+        time: timeMs,
+        normalized,
+        sectorBoundaryIndex: row.sectorBoundaryIndex,
       });
     });
   }

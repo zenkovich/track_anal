@@ -17,6 +17,32 @@
   touch-action: none;
 }
 
+.trajectory-mode-toggle {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  min-width: 44px;
+  height: 36px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(26, 26, 26, 0.9);
+  color: #ff6b00;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 25;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  transition: background 0.2s ease;
+}
+
+.trajectory-mode-toggle:hover {
+  background: rgba(255, 107, 0, 0.15);
+}
+
 /* Trajectory parameters tooltip */
 .track-tooltip {
   position: absolute;

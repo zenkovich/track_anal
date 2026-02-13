@@ -6,16 +6,18 @@ import { IChart } from "./ChartInterface";
 import { VelocityChart } from "./VelocityChart";
 import { TimeDeltaChart } from "./TimeDeltaChart";
 import { VelocityDeltaChart } from "./VelocityDeltaChart";
+import { TimeDeltaRateChart } from "./TimeDeltaRateChart";
 
 export * from "./ChartInterface";
 export * from "./VelocityChart";
 export * from "./TimeDeltaChart";
 export * from "./VelocityDeltaChart";
+export * from "./TimeDeltaRateChart";
 
 /**
  * Chart types
  */
-export type ChartType = "velocity" | "timedelta" | "velocitydelta";
+export type ChartType = "velocity" | "timedelta" | "velocitydelta" | "timedeltarate";
 
 /**
  * Chart type description
@@ -48,6 +50,12 @@ export const CHART_TYPES: ChartTypeInfo[] = [
     name: "Velocity Δ",
     icon: "VelocityDeltaIcon",
     createInstance: () => new VelocityDeltaChart(),
+  },
+  {
+    type: "timedeltarate",
+    name: "Time Δ rate",
+    icon: "TimeDeltaRateIcon",
+    createInstance: () => new TimeDeltaRateChart(),
   },
 ];
 

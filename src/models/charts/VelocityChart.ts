@@ -15,15 +15,23 @@ export class VelocityChart extends BaseChart
   calculate(lap: LapData): void 
   {
     this.points = [];
+    const lastRow = lap.rows[lap.rows.length - 1];
+    const totalDistance = lastRow?.lapDistanceFromStart ?? 0;
 
-    // Create chart point for each lap point
     lap.rows.forEach((row) => 
     {
       if (row.lapDistanceFromStart !== undefined) 
       {
+        const dist = row.lapDistanceFromStart;
+        const time = row.lapTimeFromStart ?? 0;
+        const normalized = totalDistance > 0 ? dist / totalDistance : 0;
+
         this.points.push({
-          distance: row.lapDistanceFromStart,
+          distance: dist,
           value: row.velocity,
+          time,
+          normalized,
+          sectorBoundaryIndex: row.sectorBoundaryIndex,
         });
       }
     });

@@ -2,8 +2,8 @@
  * Lap data model with parameters and visibility
  */
 
-import { VBODataRow } from "./types";
-import { IChart, ChartType, createChart, CHART_TYPES } from "./charts";
+import { CHART_TYPES, ChartType, IChart, createChart } from "./charts";
+import { LapSectorData, VBODataRow } from "./types";
 
 /**
  * Lap statistics
@@ -42,6 +42,9 @@ export class LapData
 
   /** Charts for this lap */
   private _charts: Map<ChartType, IChart> = new Map();
+
+  /** Sector times and indices (set by VBOData.computeTrackData) */
+  private _sectorData: LapSectorData[] = [];
 
   constructor(
     index: number,
@@ -107,6 +110,22 @@ export class LapData
   getAllCharts(): Map<ChartType, IChart> 
   {
     return this._charts;
+  }
+
+  /**
+   * Get sector data (times and indices)
+   */
+  getSectorData(): LapSectorData[] 
+  {
+    return this._sectorData;
+  }
+
+  /**
+   * Set sector data (called by VBOData.computeTrackData)
+   */
+  setSectorData(data: LapSectorData[]): void 
+  {
+    this._sectorData = data;
   }
 
   /**

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { TileCache, calculateZoom, getTilesForBounds, tileToLatLng } from "../utils/tiles";
 import { VBOData } from "../models/VBOData";
-import { metersToGps, gpsToMeters } from "../utils/vboParser";
+import { CanonicalX, ChartProjectionMode, Projection } from "../models/charts";
+import { TileCache, calculateZoom, getTilesForBounds, isTileFullyCovered, latLngToMercator, mercatorToLatLng, tileToLatLng } from "../utils/tiles";
+import { gpsToMeters, metersToGps } from "../utils/vboParser";
 import "./TrackVisualizer.css";
 
 interface TrackVisualizerProps {
@@ -15,8 +16,9 @@ interface TrackVisualizerProps {
   tolerancePercent?: number;
   onToleranceChange?: (tolerance: number) => void;
   lapOrder?: number[]; // Lap indices order for display
-  projectionDistance?: number | null; // Distance for synced projection
-  onProjectionDistanceChange?: (distance: number | null) => void;
+  projection?: Projection; // Chart normalized or track distance
+  projectionMode?: ChartProjectionMode; // Convert normalized to distance/time/normalized for track
+  onProjectionChange?: (projection: Projection) => void;
 }
 
 interface ViewState {
@@ -38,6 +40,86 @@ interface TrackPoint {
   isFastest: boolean; // Fastest lap
 }
 
+export type TrajectoryMode = "normal" | "timeDelta" | "speedDelta" | "timeDeltaRate";
+
+/** Darken hex color by factor (0..1, lower = darker) */
+function darkenColor(hex: string, factor: number = 0.6): string 
+{
+  const m = hex.match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
+  if (!m) return hex;
+  const r = Math.round(parseInt(m[1], 16) * factor);
+  const g = Math.round(parseInt(m[2], 16) * factor);
+  const b = Math.round(parseInt(m[3], 16) * factor);
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
+
+/** Get interpolated value at normalized position (0..1) from lap rows */
+function getValueAtNormalized(
+  rows: { lapDistanceFromStart?: number; lapTimeFromStart?: number; velocity?: number }[],
+  normalized: number,
+  type: "time" | "velocity",
+): number 
+{
+  const lastRow = rows[rows.length - 1];
+  const totalDist = lastRow?.lapDistanceFromStart ?? 0;
+  if (totalDist <= 0) return 0;
+  const targetDist = normalized * totalDist;
+  for (let i = 1; i < rows.length; i++) 
+  {
+    const p1 = rows[i - 1];
+    const p2 = rows[i];
+    const d1 = p1.lapDistanceFromStart ?? 0;
+    const d2 = p2.lapDistanceFromStart ?? 0;
+    if (targetDist >= d1 && targetDist <= d2) 
+    {
+      const t = (d2 - d1) > 0 ? (targetDist - d1) / (d2 - d1) : 0;
+      if (type === "time")
+        return (p1.lapTimeFromStart ?? 0) + t * ((p2.lapTimeFromStart ?? 0) - (p1.lapTimeFromStart ?? 0));
+      return (p1.velocity ?? 0) + t * ((p2.velocity ?? 0) - (p1.velocity ?? 0));
+    }
+  }
+  return type === "time" ? (lastRow?.lapTimeFromStart ?? 0) : (lastRow?.velocity ?? 0);
+}
+
+/** Map delta to t in [-1, 1] using dynamic range. minDelta->-1 (best), maxDelta->1 (worst) */
+function deltaToT(delta: number, minDelta: number, maxDelta: number): number 
+{
+  const span = maxDelta - minDelta;
+  if (span <= 0) return 0;
+  return 2 * (delta - minDelta) / span - 1;
+}
+
+/** Interpolate t in [-1, 1] to color: green (t=-1) -> yellow (t=0) -> red -> brown -> black (t=1) */
+function tToColor(t: number): string 
+{
+  const clamped = Math.max(-1, Math.min(1, t));
+  if (clamped <= 0)
+  {
+    const k = 1 + clamped;
+    const r = Math.round(255 * (1 - k));
+    return `#${r.toString(16).padStart(2, "0")}ff00`;
+  }
+  const lerp = (a: number, b: number, u: number) => Math.round(a + (b - a) * u);
+  const toHex = (r: number, g: number, b: number) =>
+    `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+  const yellow = { r: 255, g: 255, b: 0 };
+  const red = { r: 255, g: 0, b: 0 };
+  const brown = { r: 139, g: 69, b: 19 };
+  const black = { r: 0, g: 0, b: 0 };
+  if (clamped <= 1 / 3)
+  {
+    const u = clamped * 3;
+    return toHex(lerp(yellow.r, red.r, u), lerp(yellow.g, red.g, u), lerp(yellow.b, red.b, u));
+  }
+  if (clamped <= 2 / 3)
+  {
+    const u = (clamped - 1 / 3) * 3;
+    return toHex(lerp(red.r, brown.r, u), lerp(red.g, brown.g, u), lerp(red.b, brown.b, u));
+  }
+  const u = (clamped - 2 / 3) * 3;
+  return toHex(lerp(brown.r, black.r, u), lerp(brown.g, black.g, u), lerp(brown.b, black.b, u));
+}
+
 export function TrackVisualizer({
   data,
   showTiles: showTilesProp = true,
@@ -47,40 +129,172 @@ export function TrackVisualizer({
   tolerancePercent = 15,
   onToleranceChange,
   lapOrder = [],
-  projectionDistance = null,
-  onProjectionDistanceChange,
+  projection = null,
+  projectionMode = "normalized",
+  onProjectionChange,
 }: TrackVisualizerProps) 
 {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const animationFrameRef = useRef<number | null>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
-
+  
   const [viewState, setViewState] = useState<ViewState>({
     offsetX: 0,
     offsetY: 0,
     scale: 1,
   });
-
+  
   const [baseParams, setBaseParams] = useState<{
     baseScale: number;
-    centerX: number;
-    centerY: number;
+    centerMercX: number;
+    centerMercY: number;
   } | null>(null);
 
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
   const [tiles, setTiles] = useState<Map<string, HTMLImageElement>>(new Map());
-  const [tileZoom, setTileZoom] = useState(0);
+  const [baseTileZoom, setBaseTileZoom] = useState(0);
   const [showTileBorders, setShowTileBorders] = useState(false);
   const [showTileLabels, setShowTileLabels] = useState(false);
   const [showStartFinishDebug, setShowStartFinishDebug] = useState(false);
+  const [showSectorDebug, setShowSectorDebug] = useState(false);
   const [showHoverDebug, setShowHoverDebug] = useState(false);
+  const [trajectoryMode, setTrajectoryMode] = useState<TrajectoryMode>("normal");
+  const [deltaBaseWidthMult, setDeltaBaseWidthMult] = useState(1);
+  const [deltaMinWidthMult, setDeltaMinWidthMult] = useState(1);
+  const [deltaMaxWidthMult, setDeltaMaxWidthMult] = useState(4);
   const tileCacheRef = useRef(new TileCache("google"));
 
   const [hoveredPoints, setHoveredPoints] = useState<TrackPoint[]>([]);
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+
+  // Helper: project canonical X onto all laps, return TrackPoint[]
+  const projectCanonicalToLaps = useCallback(
+    (canonical: CanonicalX, base: typeof baseParams, view: ViewState): TrackPoint[] => 
+    {
+      if (!base) return [];
+      const fastestLapIndex = data.getFastestVisibleLap();
+      const points: TrackPoint[] = [];
+
+      data.laps.forEach((lap) => 
+      {
+        if (!lap.visible) return;
+        const rows = lap.rows;
+        const lastRow = rows[rows.length - 1];
+        const totalDist = lastRow?.lapDistanceFromStart ?? 0;
+        const totalTime = lastRow?.lapTimeFromStart ?? 0;
+
+        let targetDist: number;
+        let targetTime: number;
+        if (projectionMode === "time" && totalTime > 0) 
+        {
+          targetTime = canonical.timeMs;
+          targetDist = 0;
+        }
+        else 
+        {
+          targetDist = projectionMode === "normalized" ? canonical.normalized * totalDist : canonical.distance;
+          targetTime = 0;
+        }
+
+        let found = false;
+        let lat = rows[0]?.lat ?? 0;
+        let lng = rows[0]?.long ?? 0;
+        let dist = 0;
+        let timeMs = 0;
+        let velocity = 0;
+
+        if (projectionMode === "time" && totalTime > 0) 
+        {
+          for (let i = 1; i < rows.length; i++) 
+          {
+            const p1 = rows[i - 1];
+            const p2 = rows[i];
+            const t1 = p1.lapTimeFromStart ?? 0;
+            const t2 = p2.lapTimeFromStart ?? 0;
+            if (targetTime >= t1 && targetTime <= t2) 
+            {
+              const t = (t2 - t1) > 0 ? (targetTime - t1) / (t2 - t1) : 0;
+              lat = p1.lat + t * (p2.lat - p1.lat);
+              lng = p1.long + t * (p2.long - p1.long);
+              dist = (p1.lapDistanceFromStart ?? 0) + t * ((p2.lapDistanceFromStart ?? 0) - (p1.lapDistanceFromStart ?? 0));
+              timeMs = targetTime;
+              velocity = (p1.velocity ?? 0) + t * ((p2.velocity ?? 0) - (p1.velocity ?? 0));
+              found = true;
+              break;
+            }
+          }
+        }
+        else 
+        {
+          for (let i = 1; i < rows.length; i++) 
+          {
+            const p1 = rows[i - 1];
+            const p2 = rows[i];
+            const d1 = p1.lapDistanceFromStart ?? 0;
+            const d2 = p2.lapDistanceFromStart ?? 0;
+            if (targetDist >= d1 && targetDist <= d2) 
+            {
+              const t = (d2 - d1) > 0 ? (targetDist - d1) / (d2 - d1) : 0;
+              lat = p1.lat + t * (p2.lat - p1.lat);
+              lng = p1.long + t * (p2.long - p1.long);
+              dist = targetDist;
+              timeMs = (p1.lapTimeFromStart ?? 0) + t * ((p2.lapTimeFromStart ?? 0) - (p1.lapTimeFromStart ?? 0));
+              velocity = (p1.velocity ?? 0) + t * ((p2.velocity ?? 0) - (p1.velocity ?? 0));
+              found = true;
+              break;
+            }
+          }
+        }
+
+        if (!found && rows.length > 0) 
+        {
+          const last = rows[rows.length - 1];
+          lat = last.lat;
+          lng = last.long;
+          dist = last.lapDistanceFromStart ?? 0;
+          timeMs = last.lapTimeFromStart ?? 0;
+          velocity = last.velocity ?? 0;
+        }
+
+        const toLocal = (la: number, ln: number) => 
+        {
+          const m = latLngToMercator(la, ln);
+          return {
+            x: (m.x - base.centerMercX) * base.baseScale,
+            y: (m.y - base.centerMercY) * base.baseScale,
+          };
+        };
+        const local = toLocal(lat, lng);
+        const screenX = local.x * view.scale + view.offsetX;
+        const screenY = local.y * view.scale + view.offsetY;
+
+        points.push({
+          lapIndex: lap.index,
+          lapColor: lap.color,
+          lapName: `Lap ${lap.index + 1}`,
+          distance: dist,
+          time: `${(timeMs / 1000).toFixed(3)}s`,
+          timeMs,
+          velocity,
+          x: screenX,
+          y: screenY,
+          isFastest: lap.index === fastestLapIndex,
+        });
+      });
+
+      if (lapOrder.length > 0 && points.length > 1) 
+      {
+        const orderMap = new Map<number, number>();
+        lapOrder.forEach((lapIndex, position) => orderMap.set(lapIndex, position));
+        points.sort((a, b) => (orderMap.get(a.lapIndex) ?? a.lapIndex) - (orderMap.get(b.lapIndex) ?? b.lapIndex));
+      }
+      return points;
+    },
+    [data, projectionMode, lapOrder],
+  );
   const [debugHoverData, setDebugHoverData] = useState<{
     mouseMeters: { x: number; y: number };
     searchRadius: number;
@@ -93,6 +307,32 @@ export function TrackVisualizer({
       inRange: boolean;
     }>;
   } | null>(null);
+
+  // Refs for mouse position and hover updates (to avoid state updates on every mouse move)
+  const mousePosRef = useRef<{ x: number; y: number } | null>(null);
+  const hoverUpdateFrameRef = useRef<number | null>(null);
+  const lastHoveredPointsRef = useRef<TrackPoint[]>([]);
+  const onProjectionChangeRef = useRef(onProjectionChange);
+  const projectionRef = useRef(projection);
+  
+  // Keep refs updated
+  useEffect(() => 
+  {
+    onProjectionChangeRef.current = onProjectionChange;
+  }, [onProjectionChange]);
+  
+  useEffect(() => 
+  {
+    projectionRef.current = projection;
+  }, [projection]);
+
+  const viewStateRef = useRef(viewState);
+  const baseParamsRef = useRef(baseParams);
+  useEffect(() => 
+  {
+    viewStateRef.current = viewState;
+    baseParamsRef.current = baseParams;
+  }, [viewState, baseParams]);
 
   const showTiles = showTilesProp;
   const showSettingsPanel = showSettingsPanelProp;
@@ -107,13 +347,17 @@ export function TrackVisualizer({
       const availableWidth = dimensions.width - 2 * padding;
       const availableHeight = dimensions.height - 2 * padding;
 
-      const scaleX = availableWidth / bbox.width;
-      const scaleY = availableHeight / bbox.height;
+      const topLeft = latLngToMercator(bbox.maxLat, bbox.minLong);
+      const bottomRight = latLngToMercator(bbox.minLat, bbox.maxLong);
+      const widthMerc = bottomRight.x - topLeft.x;
+      const heightMerc = bottomRight.y - topLeft.y;
+
+      const scaleX = availableWidth / widthMerc;
+      const scaleY = availableHeight / heightMerc;
       const baseScale = Math.min(scaleX, scaleY);
 
-      const centerX = bbox.centerLong;
-      const centerY = bbox.centerLat;
-
+      const center = latLngToMercator(bbox.centerLat, bbox.centerLong);
+      
       const zoom = calculateZoom(
         bbox.minLat,
         bbox.maxLat,
@@ -123,9 +367,9 @@ export function TrackVisualizer({
         dimensions.height,
       );
 
-      setTileZoom(zoom);
-      setBaseParams({ baseScale, centerX, centerY });
-
+      setBaseTileZoom(zoom);
+      setBaseParams({ baseScale, centerMercX: center.x, centerMercY: center.y });
+      
       setViewState({
         offsetX: dimensions.width / 2,
         offsetY: dimensions.height / 2,
@@ -193,47 +437,86 @@ export function TrackVisualizer({
 
   useEffect(() => 
   {
-    if (!tileZoom || !data.rows.length || !showTiles) 
+    if (!showTiles) 
     {
       setTiles(new Map());
+      return;
+    }
+    if (!baseTileZoom || !data.rows.length || !baseParams) 
+    {
       return;
     }
 
     let cancelled = false;
     const bbox = data.boundingBox;
-    const tilesToLoad = getTilesForBounds(
-      bbox.minLat,
-      bbox.maxLat,
-      bbox.minLong,
-      bbox.maxLong,
-      tileZoom,
-    );
+    const { centerMercX, centerMercY, baseScale } = baseParams;
+
+    const zoomDelta = Math.floor(Math.log2(Math.max(0.5, viewState.scale)));
+    const effectiveZoom = Math.max(1, Math.min(21, baseTileZoom + zoomDelta));
+
+    const getBounds = () => 
+    {
+      if (viewState.scale > 1.2) 
+      {
+        const minLocalX = -viewState.offsetX / viewState.scale;
+        const maxLocalX = (dimensions.width - viewState.offsetX) / viewState.scale;
+        const minLocalY = -viewState.offsetY / viewState.scale;
+        const maxLocalY = (dimensions.height - viewState.offsetY) / viewState.scale;
+        const minMercX = minLocalX / baseScale + centerMercX;
+        const maxMercX = maxLocalX / baseScale + centerMercX;
+        const minMercY = minLocalY / baseScale + centerMercY;
+        const maxMercY = maxLocalY / baseScale + centerMercY;
+        const minLl = mercatorToLatLng(minMercX, minMercY);
+        const maxLl = mercatorToLatLng(maxMercX, maxMercY);
+        return {
+          minLat: Math.max(bbox.minLat, Math.min(minLl.lat, maxLl.lat)),
+          maxLat: Math.min(bbox.maxLat, Math.max(minLl.lat, maxLl.lat)),
+          minLong: Math.max(bbox.minLong, Math.min(minLl.lng, maxLl.lng)),
+          maxLong: Math.min(bbox.maxLong, Math.max(minLl.lng, maxLl.lng)),
+        };
+      }
+      return {
+        minLat: bbox.minLat,
+        maxLat: bbox.maxLat,
+        minLong: bbox.minLong,
+        maxLong: bbox.maxLong,
+      };
+    };
+
+    const expandFactor = viewState.scale > 1.2 ? 1.5 : 1.6;
+    const cache = tileCacheRef.current;
+    const minZoom = Math.min(baseTileZoom, effectiveZoom);
+    const maxZoom = Math.max(baseTileZoom, effectiveZoom);
 
     const loadTiles = async () => 
     {
-      const loaded = new Map<string, HTMLImageElement>();
-      const cache = tileCacheRef.current;
-
-      for (const tile of tilesToLoad) 
+      for (let z = minZoom; z <= maxZoom && !cancelled; z++) 
       {
-        if (cancelled) break;
-        try 
+        const { minLat, maxLat, minLong, maxLong } = getBounds();
+        const tilesToLoad = getTilesForBounds(minLat, maxLat, minLong, maxLong, z, expandFactor);
+
+        for (const tile of tilesToLoad) 
         {
-          const img = await cache.load(tile);
-          if (!cancelled) 
+          if (cancelled) break;
+          const key = `${tile.z}/${tile.x}/${tile.y}`;
+          try 
           {
-            loaded.set(`${tile.z}/${tile.x}/${tile.y}`, img);
+            const img = await cache.load(tile);
+            if (!cancelled) 
+            {
+              setTiles((prev) => 
+              {
+                const next = new Map(prev);
+                next.set(key, img);
+                return next;
+              });
+            }
+          }
+          catch 
+          {
+            // Ignore individual tile load errors
           }
         }
-        catch 
-        {
-          // Ignore individual tile load errors
-        }
-      }
-
-      if (!cancelled) 
-      {
-        setTiles(loaded);
       }
     };
 
@@ -243,7 +526,7 @@ export function TrackVisualizer({
     {
       cancelled = true;
     };
-  }, [tileZoom, data.boundingBox, showTiles]);
+  }, [baseTileZoom, baseParams, data.boundingBox, showTiles, viewState.scale, viewState.offsetX, viewState.offsetY, dimensions.width, dimensions.height]);
 
   useEffect(() => 
   {
@@ -288,6 +571,207 @@ export function TrackVisualizer({
     [viewState.offsetX, viewState.offsetY],
   );
 
+  // Unified function to update hover state (called via requestAnimationFrame)
+  const updateHoverState = useCallback(
+    (mouseX: number, mouseY: number, currentViewState: ViewState, currentBaseParams: typeof baseParams) => 
+    {
+      if (!currentBaseParams || !data) return;
+
+      // Update mouse position ref (no state update)
+      mousePosRef.current = { x: mouseX, y: mouseY };
+
+      // Convert screen coords to world coords (canvas local coords)
+      const worldX = (mouseX - currentViewState.offsetX) / currentViewState.scale;
+      const worldY = (mouseY - currentViewState.offsetY) / currentViewState.scale;
+
+      // Convert world coords (Mercator) to GPS
+      const mercX = worldX / currentBaseParams.baseScale + currentBaseParams.centerMercX;
+      const mercY = worldY / currentBaseParams.baseScale + currentBaseParams.centerMercY;
+      const mouseGps = mercatorToLatLng(mercX, mercY);
+      const mouseLat = mouseGps.lat;
+      const mouseLong = mouseGps.lng;
+
+      // Convert GPS to track metric coords (same as VBODataRow.x, VBODataRow.y)
+      const bbox = data.boundingBox;
+      const mouseMeters = gpsToMeters(mouseLat, mouseLong, bbox.minLat, bbox.minLong);
+
+      // Convert pixels to meters (Mercator: 1 local unit = 1/baseScale Mercator units; 1 Mercator unit ≈ 40075 km at equator)
+      const metersPerLocalUnit =
+        (40075000 * Math.cos((bbox.centerLat * Math.PI) / 180)) / currentBaseParams.baseScale;
+      const metersPerPixel = metersPerLocalUnit / currentViewState.scale;
+
+      // Threshold: 50 pixels
+      const minDistancePixels = 50;
+      const minDistanceMeters = minDistancePixels * metersPerPixel;
+      const searchRadiusMeters = minDistanceMeters * 2;
+
+      const checkedSegments: Array<{
+        p1: { x: number; y: number };
+        p2: { x: number; y: number };
+        proj: { x: number; y: number };
+        dist: number;
+        inRange: boolean;
+      }> = [];
+
+      // Find nearest point on FASTEST lap only - this gives us canonical X
+      const fastestLapIndex = data.getFastestVisibleLap();
+      const fastestLap = fastestLapIndex !== null ? data.laps.find((l) => l.index === fastestLapIndex) : null;
+
+      let canonical: CanonicalX | null = null;
+      const foundPoints: TrackPoint[] = [];
+
+      if (fastestLap?.visible) 
+      {
+        type Candidate = { dist: number; distanceFromStart: number; timeFromStart: number; normalized: number };
+        const candidates: Candidate[] = [];
+        const rows = fastestLap.rows;
+        const lastRow = rows[rows.length - 1];
+        const totalDist = lastRow?.lapDistanceFromStart ?? 0;
+
+        for (let i = 1; i < rows.length; i++) 
+        {
+          const p1 = rows[i - 1];
+          const p2 = rows[i];
+          const minX = Math.min(p1.x, p2.x) - searchRadiusMeters;
+          const maxX = Math.max(p1.x, p2.x) + searchRadiusMeters;
+          const minY = Math.min(p1.y, p2.y) - searchRadiusMeters;
+          const maxY = Math.max(p1.y, p2.y) + searchRadiusMeters;
+          if (
+            mouseMeters.x < minX ||
+            mouseMeters.x > maxX ||
+            mouseMeters.y < minY ||
+            mouseMeters.y > maxY
+          ) 
+            continue;
+
+          const dx = p2.x - p1.x;
+          const dy = p2.y - p1.y;
+          const segmentLength = Math.sqrt(dx * dx + dy * dy);
+          if (segmentLength < 0.001) continue;
+
+          const t = Math.max(
+            0,
+            Math.min(
+              1,
+              ((mouseMeters.x - p1.x) * dx + (mouseMeters.y - p1.y) * dy) / (segmentLength * segmentLength),
+            ),
+          );
+          const projX = p1.x + t * dx;
+          const projY = p1.y + t * dy;
+          const dist = Math.sqrt(
+            (mouseMeters.x - projX) ** 2 + (mouseMeters.y - projY) ** 2,
+          );
+
+          checkedSegments.push({
+            p1: { x: p1.x, y: p1.y },
+            p2: { x: p2.x, y: p2.y },
+            proj: { x: projX, y: projY },
+            dist,
+            inRange: dist < minDistanceMeters,
+          });
+
+          if (dist < minDistanceMeters) 
+          {
+            const p1Dist = p1.lapDistanceFromStart ?? 0;
+            const p2Dist = p2.lapDistanceFromStart ?? 0;
+            const p1Time = p1.lapTimeFromStart ?? 0;
+            const p2Time = p2.lapTimeFromStart ?? 0;
+            candidates.push({
+              dist,
+              distanceFromStart: p1Dist + t * (p2Dist - p1Dist),
+              timeFromStart: p1Time + t * (p2Time - p1Time),
+              normalized: totalDist > 0 ? (p1Dist + t * (p2Dist - p1Dist)) / totalDist : 0,
+            });
+          }
+        }
+
+        if (candidates.length > 0) 
+        {
+          const best = candidates.reduce((a, b) => (a.dist <= b.dist ? a : b));
+          canonical = {
+            distance: best.distanceFromStart,
+            timeMs: best.timeFromStart,
+            normalized: best.normalized,
+          };
+        }
+      }
+
+      if (canonical) 
+      {
+        const projectedPoints = projectCanonicalToLaps(canonical, currentBaseParams, currentViewState);
+        foundPoints.push(...projectedPoints);
+      }
+
+      // Sort found points by table order
+      let sortedPoints = foundPoints;
+      if (lapOrder.length > 0 && foundPoints.length > 1) 
+      {
+        // Build position map for quick lookup
+        const orderMap = new Map<number, number>();
+        lapOrder.forEach((lapIndex, position) => 
+        {
+          orderMap.set(lapIndex, position);
+        });
+
+        // Sort by table order
+        sortedPoints = [...foundPoints].sort((a, b) => 
+        {
+          const posA = orderMap.get(a.lapIndex);
+          const posB = orderMap.get(b.lapIndex);
+
+          // If positions not found, keep order
+          if (posA === undefined || posB === undefined) 
+          {
+            return a.lapIndex - b.lapIndex;
+          }
+
+          return posA - posB;
+        });
+
+        if (showHoverDebug && foundPoints.length > 1) 
+        {
+          const before = foundPoints.map((p) => `Lap${p.lapIndex}`).join(", ");
+          const after = sortedPoints.map((p) => `Lap${p.lapIndex}`).join(", ");
+          console.log(`[Tooltip Sort] Order: [${lapOrder.join(", ")}]`);
+          console.log(`  Before: ${before}`);
+          console.log(`  After: ${after}`);
+        }
+      }
+
+      // Always update on every cursor move for smooth projection
+      lastHoveredPointsRef.current = sortedPoints;
+      setHoveredPoints(sortedPoints);
+      setMousePos({ x: mouseX, y: mouseY });
+      setDebugHoverData({
+        mouseMeters,
+        searchRadius: searchRadiusMeters,
+        minDistance: minDistanceMeters,
+        checkedSegments,
+      });
+
+      if (onProjectionChangeRef.current && canonical) 
+      {
+        onProjectionChangeRef.current({ type: "track", canonical });
+      }
+      else if (onProjectionChangeRef.current && !canonical && sortedPoints.length === 0) 
+      {
+        onProjectionChangeRef.current(null);
+      }
+
+      if (showHoverDebug && checkedSegments.length > 0) 
+      {
+        console.log(
+          `[Hover] metersPerPixel: ${metersPerPixel.toFixed(4)}m, minDistance: ${minDistanceMeters.toFixed(2)}m (${minDistancePixels}px)`,
+        );
+        console.log(
+          `[Hover] Checked segments: ${checkedSegments.length}, in range: ${checkedSegments.filter((s) => s.inRange).length}`,
+        );
+      }
+    },
+    [data, showHoverDebug, lapOrder, projectCanonicalToLaps],
+    // onProjectionDistanceChange removed from dependencies - using ref instead
+  );
+
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => 
     {
@@ -299,420 +783,119 @@ export function TrackVisualizer({
           offsetY: e.clientY - dragStart.y,
         }));
       }
-      else 
-      {
-        // Handle hover to show trajectory parameters
-        const canvas = canvasRef.current;
-        if (!canvas || !baseParams) return;
+      // Hover is handled by native mousemove listener for 1-pixel resolution
+    },
+    [isDragging, dragStart.x, dragStart.y],
+  );
 
+  // Native mousemove for 1-pixel updates (React synthetic events can be throttled)
+  useEffect(() => 
+  {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const handler = (e: MouseEvent) => 
+    {
+      if (baseParamsRef.current) 
+      {
         const rect = canvas.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
-
-        setMousePos({ x: mouseX, y: mouseY });
-
-        // Clear projectionDistance on local hover to avoid conflicts
-        if (onProjectionDistanceChange) 
-        {
-          onProjectionDistanceChange(null);
-        }
-
-        // Convert screen coords to world coords (canvas local coords)
-        const worldX = (mouseX - viewState.offsetX) / viewState.scale;
-        const worldY = (mouseY - viewState.offsetY) / viewState.scale;
-
-        // Convert world coords to GPS
-        const mouseLong = worldX / baseParams.baseScale + baseParams.centerX;
-        const mouseLat = -worldY / baseParams.baseScale + baseParams.centerY;
-
-        // Convert GPS to track metric coords (same as VBODataRow.x, VBODataRow.y)
-        const bbox = data.boundingBox;
-        const mouseMeters = gpsToMeters(mouseLat, mouseLong, bbox.minLat, bbox.minLong);
-
-        // Convert pixels to meters
-        // 1 screen pixel = (1 / viewState.scale) local units
-        // 1 local unit = (1 / baseParams.baseScale) degrees
-        // 1 degree ≈ 111km at bbox.centerLat
-        const metersPerDegree = 111000 * Math.cos((bbox.centerLat * Math.PI) / 180);
-        const metersPerLocalUnit = metersPerDegree / baseParams.baseScale;
-        const metersPerPixel = metersPerLocalUnit / viewState.scale;
-
-        // Threshold: 50 pixels
-        const minDistancePixels = 50;
-        const minDistanceMeters = minDistancePixels * metersPerPixel;
-        const searchRadiusMeters = minDistanceMeters * 2;
-
-        const checkedSegments: Array<{
-          p1: { x: number; y: number };
-          p2: { x: number; y: number };
-          proj: { x: number; y: number };
-          dist: number;
-          inRange: boolean;
-        }> = [];
-
-        const foundPoints: TrackPoint[] = [];
-
-        // Find fastest lap among visible
-        const fastestLapIndex = data.getFastestVisibleLap();
-
-        // Find nearest points for each visible lap
-        data.laps.forEach((lap) => 
-        {
-          if (!lap.visible) return;
-
-          let closestDist = Infinity;
-          let closestPoint: TrackPoint | null = null;
-
-          const rows = lap.rows;
-
-          for (let i = 1; i < rows.length; i++) 
-          {
-            const p1 = rows[i - 1];
-            const p2 = rows[i];
-
-            // Quick check: skip far segments
-            const minX = Math.min(p1.x, p2.x) - searchRadiusMeters;
-            const maxX = Math.max(p1.x, p2.x) + searchRadiusMeters;
-            const minY = Math.min(p1.y, p2.y) - searchRadiusMeters;
-            const maxY = Math.max(p1.y, p2.y) + searchRadiusMeters;
-
-            if (
-              mouseMeters.x < minX ||
-              mouseMeters.x > maxX ||
-              mouseMeters.y < minY ||
-              mouseMeters.y > maxY
-            ) 
-            {
-              continue;
-            }
-
-            // Project cursor onto segment
-            const dx = p2.x - p1.x;
-            const dy = p2.y - p1.y;
-            const segmentLength = Math.sqrt(dx * dx + dy * dy);
-
-            if (segmentLength < 0.001) continue;
-
-            // Projection parameter t [0, 1]
-            const t = Math.max(
-              0,
-              Math.min(
-                1,
-                ((mouseMeters.x - p1.x) * dx + (mouseMeters.y - p1.y) * dy) /
-                  (segmentLength * segmentLength),
-              ),
-            );
-
-            // Projection point on segment
-            const projX = p1.x + t * dx;
-            const projY = p1.y + t * dy;
-
-            // Distance from cursor to projection
-            const dist = Math.sqrt(
-              (mouseMeters.x - projX) * (mouseMeters.x - projX) +
-                (mouseMeters.y - projY) * (mouseMeters.y - projY),
-            );
-
-            // Store for debug drawing
-            checkedSegments.push({
-              p1: { x: p1.x, y: p1.y },
-              p2: { x: p2.x, y: p2.y },
-              proj: { x: projX, y: projY },
-              dist: dist,
-              inRange: dist < minDistanceMeters,
-            });
-
-            if (dist < minDistanceMeters && dist < closestDist) 
-            {
-              closestDist = dist;
-
-              // Interpolate parameters
-              const velocity = p1.velocity + t * (p2.velocity - p1.velocity);
-
-              // Interpolate distance from lap start (use precomputed values)
-              const p1DistFromStart = p1.lapDistanceFromStart || 0;
-              const p2DistFromStart = p2.lapDistanceFromStart || 0;
-              const distanceFromStart = p1DistFromStart + t * (p2DistFromStart - p1DistFromStart);
-
-              // Format time like in laps list: M:SS.mmm
-              const formatTimeTooltip = (ms: number): string => 
-              {
-                if (isNaN(ms) || ms < 0) return "0:00.000";
-                const totalSeconds = ms / 1000;
-                const minutes = Math.floor(totalSeconds / 60);
-                const secondsRemainder = totalSeconds - minutes * 60;
-                const secWhole = Math.floor(secondsRemainder);
-                const secFrac = Math.floor((secondsRemainder - secWhole) * 1000);
-                return `${minutes}:${secWhole.toString().padStart(2, "0")}.${secFrac.toString().padStart(3, "0")}`;
-              };
-
-              // Interpolate time from lap start (use precomputed values)
-              const p1TimeFromStart = p1.lapTimeFromStart || 0;
-              const p2TimeFromStart = p2.lapTimeFromStart || 0;
-              const timeFromStart = p1TimeFromStart + t * (p2TimeFromStart - p1TimeFromStart);
-
-              // Debug time output for first close segment of each lap
-              if (
-                showHoverDebug &&
-                lap.index <= 2 &&
-                dist < minDistanceMeters &&
-                closestDist === Infinity
-              ) 
-              {
-                console.log(
-                  `[Hover] Lap ${lap.index}, segment ${i}/${rows.length}, dist=${dist.toFixed(2)}m:`,
-                );
-                console.log(
-                  `  p1: time="${p1.time}", lapTimeFromStart=${p1.lapTimeFromStart}, using=${p1TimeFromStart}ms`,
-                );
-                console.log(
-                  `  p2: time="${p2.time}", lapTimeFromStart=${p2.lapTimeFromStart}, using=${p2TimeFromStart}ms`,
-                );
-                console.log(
-                  `  t=${t.toFixed(3)}, result=${timeFromStart.toFixed(1)}ms = ${formatTimeTooltip(timeFromStart)}`,
-                );
-
-                // Check lap points
-                console.log(
-                  `  Lap has ${rows.length} points, first.time="${rows[0].time}", last.time="${rows[rows.length - 1].time}"`,
-                );
-              }
-
-              // Convert projection (meters) back to screen coords
-              // 1. Meters -> GPS
-              const projGps = metersToGps(projX, projY, bbox.minLat, bbox.minLong);
-              // 2. GPS -> canvas local coords
-              const projLocalX = (projGps.long - baseParams.centerX) * baseParams.baseScale;
-              const projLocalY = -(projGps.lat - baseParams.centerY) * baseParams.baseScale;
-              // 3. Local -> screen
-              const screenX = projLocalX * viewState.scale + viewState.offsetX;
-              const screenY = projLocalY * viewState.scale + viewState.offsetY;
-
-              closestPoint = {
-                lapIndex: lap.index,
-                lapColor: lap.color,
-                lapName: `Lap ${lap.index + 1}`,
-                distance: distanceFromStart,
-                time: formatTimeTooltip(timeFromStart),
-                timeMs: timeFromStart,
-                velocity: velocity,
-                x: screenX,
-                y: screenY,
-                isFastest: lap.index === fastestLapIndex,
-              };
-            }
-          }
-
-          if (closestPoint) 
-          {
-            foundPoints.push(closestPoint);
-          }
-        });
-
-        // Sort found points by table order
-        let sortedPoints = foundPoints;
-        if (lapOrder.length > 0 && foundPoints.length > 1) 
-        {
-          // Build position map for quick lookup
-          const orderMap = new Map<number, number>();
-          lapOrder.forEach((lapIndex, position) => 
-          {
-            orderMap.set(lapIndex, position);
-          });
-
-          // Sort by table order
-          sortedPoints = [...foundPoints].sort((a, b) => 
-          {
-            const posA = orderMap.get(a.lapIndex);
-            const posB = orderMap.get(b.lapIndex);
-
-            // If positions not found, keep order
-            if (posA === undefined || posB === undefined) 
-            {
-              return a.lapIndex - b.lapIndex;
-            }
-
-            return posA - posB;
-          });
-
-          if (showHoverDebug && foundPoints.length > 1) 
-          {
-            const before = foundPoints.map((p) => `Lap${p.lapIndex}`).join(", ");
-            const after = sortedPoints.map((p) => `Lap${p.lapIndex}`).join(", ");
-            console.log(`[Tooltip Sort] Order: [${lapOrder.join(", ")}]`);
-            console.log(`  Before: ${before}`);
-            console.log(`  After: ${after}`);
-          }
-        }
-
-        setHoveredPoints(sortedPoints);
-        setDebugHoverData({
-          mouseMeters,
-          searchRadius: searchRadiusMeters,
-          minDistance: minDistanceMeters,
-          checkedSegments,
-        });
-
-        // Send distance for sync with charts
-        if (sortedPoints.length > 0 && onProjectionDistanceChange) 
-        {
-          // Use distance from first found point (all at same distance)
-          onProjectionDistanceChange(sortedPoints[0].distance);
-        }
-        else if (onProjectionDistanceChange) 
-        {
-          onProjectionDistanceChange(null);
-        }
-
-        // Debug: show conversion only when debug mode is on
-        if (showHoverDebug && checkedSegments.length > 0) 
-        {
-          console.log(
-            `[Hover] metersPerPixel: ${metersPerPixel.toFixed(4)}m, minDistance: ${minDistanceMeters.toFixed(2)}m (${minDistancePixels}px)`,
-          );
-          console.log(
-            `[Hover] Checked segments: ${checkedSegments.length}, in range: ${checkedSegments.filter((s) => s.inRange).length}`,
-          );
-        }
+        updateHoverState(mouseX, mouseY, viewStateRef.current, baseParamsRef.current);
       }
-    },
-    [
-      isDragging,
-      dragStart.x,
-      dragStart.y,
-      viewState,
-      baseParams,
-      data,
-      showHoverDebug,
-      updateCounter,
-      lapOrder,
-      onProjectionDistanceChange,
-    ],
-  );
+    };
 
-  // Compute hoveredPoints from projectionDistance from charts
+    canvas.addEventListener("mousemove", handler, { passive: true });
+    return () => canvas.removeEventListener("mousemove", handler);
+  }, [updateHoverState]);
+
+  // Compute hoveredPoints from chart projection
+  // Convert normalized (0..1) to projection mode per lap: distance, time, or normalized
+  const hoveredPointsRef = useRef<TrackPoint[]>([]);
   useEffect(() => 
   {
-    if (projectionDistance !== null && projectionDistance >= 0 && baseParams) 
+    hoveredPointsRef.current = hoveredPoints;
+  }, [hoveredPoints]);
+
+  useEffect(() => 
+  {
+    // Process both chart and track projection - get canonical X and project onto all laps
+    // Recomputes screen coords when viewState (zoom/pan) changes so projection stays on trajectory
+    if (projection && baseParams) 
     {
-      // Check if projectionDistance differs from current local hover
-      const currentDistance = hoveredPoints.length > 0 ? hoveredPoints[0].distance : null;
-      // If local hover has same distance, don't update
-      if (
-        mousePos !== null &&
-        currentDistance !== null &&
-        Math.abs(currentDistance - projectionDistance) < 1
-      ) 
+      let canonical: CanonicalX;
+      if (projection.type === "chart") 
       {
-        return;
+        const refLap = data.getFastestVisibleLap() !== null
+          ? data.laps.find((l) => l.index === data.getFastestVisibleLap())
+          : null;
+        const refLastRow = refLap?.rows[refLap.rows.length - 1];
+        const refTotalDist = refLastRow?.lapDistanceFromStart ?? 0;
+        const refTotalTime = refLastRow?.lapTimeFromStart ?? 0;
+        const n = projection.normalized;
+        canonical = {
+          distance: n * refTotalDist,
+          timeMs: n * refTotalTime,
+          normalized: n,
+        };
       }
-      const fastestLapIndex = data.getFastestVisibleLap();
-      const projectedPoints: TrackPoint[] = [];
-
-      data.laps.forEach((lap) => 
+      else 
       {
-        if (!lap.visible) return;
-
-        // Find point at target distance (take nearest)
-        let closestRow = null;
-        let minDiff = Infinity;
-
-        for (const row of lap.rows) 
-        {
-          if (row.lapDistanceFromStart !== undefined) 
-          {
-            const diff = Math.abs(row.lapDistanceFromStart - projectionDistance);
-            if (diff < minDiff) 
-            {
-              minDiff = diff;
-              closestRow = row;
-            }
-          }
-        }
-
-        if (!closestRow || minDiff > 50) return; // Too far
-
-        // Convert to screen coords
-        const toLocalX = (long: number) => (long - baseParams.centerX) * baseParams.baseScale;
-        const toLocalY = (lat: number) => -(lat - baseParams.centerY) * baseParams.baseScale;
-
-        const localX = toLocalX(closestRow.long);
-        const localY = toLocalY(closestRow.lat);
-        const screenX = localX * viewState.scale + viewState.offsetX;
-        const screenY = localY * viewState.scale + viewState.offsetY;
-
-        projectedPoints.push({
-          lapIndex: lap.index,
-          lapColor: lap.color,
-          lapName: `Lap ${lap.index + 1}`,
-          distance: closestRow.lapDistanceFromStart || 0,
-          time: `${((closestRow.lapTimeFromStart || 0) / 1000).toFixed(3)}s`,
-          timeMs: closestRow.lapTimeFromStart || 0,
-          velocity: closestRow.velocity,
-          x: screenX,
-          y: screenY,
-          isFastest: lap.index === fastestLapIndex,
-        });
-      });
-
-      // Sort by table order
-      if (lapOrder.length > 0 && projectedPoints.length > 1) 
-      {
-        const orderMap = new Map<number, number>();
-        lapOrder.forEach((lapIndex, position) => 
-        {
-          orderMap.set(lapIndex, position);
-        });
-
-        projectedPoints.sort((a, b) => 
-        {
-          const posA = orderMap.get(a.lapIndex);
-          const posB = orderMap.get(b.lapIndex);
-          if (posA === undefined || posB === undefined) 
-          {
-            return a.lapIndex - b.lapIndex;
-          }
-          return posA - posB;
-        });
+        canonical = projection.canonical;
       }
+
+      const projectedPoints = projectCanonicalToLaps(canonical, baseParams, viewState);
 
       const needsUpdate =
-        hoveredPoints.length !== projectedPoints.length ||
-        hoveredPoints.some((a, i) => 
+        hoveredPointsRef.current.length !== projectedPoints.length ||
+        hoveredPointsRef.current.some((a, i) => 
         {
           const b = projectedPoints[i];
-          return (
-            !b ||
-            a.lapIndex !== b.lapIndex ||
-            Math.abs(a.distance - b.distance) > 0.5 ||
-            Math.abs(a.x - b.x) > 0.5 ||
-            Math.abs(a.y - b.y) > 0.5
-          );
+          return !b || a.lapIndex !== b.lapIndex || Math.abs(a.distance - b.distance) > 0.01 || Math.abs(a.x - b.x) > 0.1 || Math.abs(a.y - b.y) > 0.1;
         });
 
       if (needsUpdate) 
       {
+        lastHoveredPointsRef.current = projectedPoints;
         setHoveredPoints(projectedPoints);
+        if (projection.type === "chart") setMousePos(null); // Chart projection: no local tooltip
       }
     }
-    else if (projectionDistance === null) 
+    else if (projection === null) 
     {
-      // Clear only when there's no local hover
-      if (mousePos !== null) return;
-      if (hoveredPoints.length > 0) 
+      if (mousePosRef.current !== null) return;
+      if (hoveredPointsRef.current.length > 0) 
       {
+        lastHoveredPointsRef.current = [];
         setHoveredPoints([]);
       }
     }
-  }, [projectionDistance, data, baseParams, viewState, lapOrder, mousePos, hoveredPoints]);
+  }, [projection, projectionMode, data, baseParams, viewState, lapOrder]);
 
   const handleMouseUp = useCallback(() => setIsDragging(false), []);
   const handleMouseLeave = useCallback(() => 
   {
     setIsDragging(false);
+    mousePosRef.current = null;
     setMousePos(null);
     setDebugHoverData(null);
-    // Don't clear hoveredPoints here - they may come from projectionDistance
+    // Cancel pending hover update
+    if (hoverUpdateFrameRef.current !== null) 
+    {
+      cancelAnimationFrame(hoverUpdateFrameRef.current);
+      hoverUpdateFrameRef.current = null;
+    }
+    // Clear local hover points when mouse leaves track area
+    if (projectionRef.current?.type !== "chart" && hoveredPointsRef.current.length > 0) 
+    {
+      lastHoveredPointsRef.current = [];
+      setHoveredPoints([]);
+    }
+    // Clear projection if it was set from track hover
+    if (onProjectionChangeRef.current && projectionRef.current?.type === "track") 
+    {
+      onProjectionChangeRef.current(null);
+    }
   }, []);
 
   const toggleTileBorders = () => 
@@ -730,10 +913,46 @@ export function TrackVisualizer({
     setShowStartFinishDebug((prev) => !prev);
   };
 
+  const toggleSectorDebug = () => 
+  {
+    setShowSectorDebug((prev) => !prev);
+  };
+
   const toggleHoverDebug = () => 
   {
     setShowHoverDebug((prev) => !prev);
   };
+
+  const cycleTrajectoryMode = () => 
+  {
+    setTrajectoryMode((prev) => 
+    {
+      if (prev === "normal") return "timeDelta";
+      if (prev === "timeDelta") return "speedDelta";
+      if (prev === "speedDelta") return "timeDeltaRate";
+      return "normal";
+    });
+  };
+
+  // Use refs for frequently changing values to avoid re-renders
+  const hoveredPointsForRenderRef = useRef<TrackPoint[]>([]);
+  const mousePosForRenderRef = useRef<{ x: number; y: number } | null>(null);
+  const debugHoverDataForRenderRef = useRef<typeof debugHoverData>(null);
+
+  useEffect(() => 
+  {
+    hoveredPointsForRenderRef.current = hoveredPoints;
+  }, [hoveredPoints]);
+
+  useEffect(() => 
+  {
+    mousePosForRenderRef.current = mousePos;
+  }, [mousePos]);
+
+  useEffect(() => 
+  {
+    debugHoverDataForRenderRef.current = debugHoverData;
+  }, [debugHoverData]);
 
   useEffect(() => 
   {
@@ -751,6 +970,10 @@ export function TrackVisualizer({
     // Use requestAnimationFrame for optimization
     animationFrameRef.current = requestAnimationFrame(() => 
     {
+      // Use refs for current values to avoid dependency on frequently changing state
+      const currentHoveredPoints = hoveredPointsForRenderRef.current;
+      const currentMousePos = mousePosForRenderRef.current;
+      const currentDebugHoverData = debugHoverDataForRenderRef.current;
       ctx.fillStyle = "#1a1a1a";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -759,22 +982,55 @@ export function TrackVisualizer({
       ctx.translate(viewState.offsetX, viewState.offsetY);
       ctx.scale(viewState.scale, viewState.scale);
 
-      const toLocalX = (long: number) => (long - baseParams.centerX) * baseParams.baseScale;
-      const toLocalY = (lat: number) => -(lat - baseParams.centerY) * baseParams.baseScale;
+      const toLocal = (lat: number, lng: number) => 
+      {
+        const m = latLngToMercator(lat, lng);
+        return {
+          x: (m.x - baseParams.centerMercX) * baseParams.baseScale,
+          y: (m.y - baseParams.centerMercY) * baseParams.baseScale,
+        };
+      };
 
-      // Draw tiles
+      // Draw tiles: low zoom first, high zoom on top. Skip low-res if fully covered by high-res.
+      // Only draw up to effectiveZoom (optimal detail for current scale).
       if (tiles.size > 0) 
       {
-        tiles.forEach((img, key) => 
+        const zoomDelta = Math.floor(Math.log2(Math.max(0.5, viewState.scale)));
+        const effectiveZoom = Math.max(1, Math.min(21, baseTileZoom + zoomDelta));
+
+        const minLocalX = -viewState.offsetX / viewState.scale;
+        const maxLocalX = (dimensions.width - viewState.offsetX) / viewState.scale;
+        const minLocalY = -viewState.offsetY / viewState.scale;
+        const maxLocalY = (dimensions.height - viewState.offsetY) / viewState.scale;
+
+        const sortedKeys = Array.from(tiles.keys()).sort((a, b) => 
+        {
+          const za = parseInt(a.split("/")[0], 10);
+          const zb = parseInt(b.split("/")[0], 10);
+          return za - zb;
+        });
+
+        for (const key of sortedKeys) 
         {
           const [z, x, y] = key.split("/").map(Number);
+          if (z > effectiveZoom) continue;
+          if (isTileFullyCovered(x, y, z, tiles, effectiveZoom)) continue;
+
+          const img = tiles.get(key);
+          if (!img?.complete) continue;
+
           const topLeft = tileToLatLng(x, y, z);
           const bottomRight = tileToLatLng(x + 1, y + 1, z);
+          const m1 = latLngToMercator(topLeft.lat, topLeft.lng);
+          const m2 = latLngToMercator(bottomRight.lat, bottomRight.lng);
 
-          const localX = toLocalX(topLeft.lng);
-          const localY = toLocalY(topLeft.lat);
-          const width = (bottomRight.lng - topLeft.lng) * baseParams.baseScale;
-          const height = -(bottomRight.lat - topLeft.lat) * baseParams.baseScale;
+          const tl = toLocal(topLeft.lat, topLeft.lng);
+          const localX = tl.x;
+          const localY = tl.y;
+          const width = (m2.x - m1.x) * baseParams.baseScale;
+          const height = (m2.y - m1.y) * baseParams.baseScale;
+
+          if (localX + width <= minLocalX || localX >= maxLocalX || localY + height <= minLocalY || localY >= maxLocalY) continue;
 
           ctx.drawImage(img, localX, localY, width, height);
 
@@ -786,7 +1042,7 @@ export function TrackVisualizer({
             ctx.strokeRect(localX, localY, width, height);
           }
 
-          // Tile labels
+          // Tile labels (screen coords - reset transform, draw, restore)
           if (showTileLabels) 
           {
             ctx.save();
@@ -797,19 +1053,20 @@ export function TrackVisualizer({
             ctx.font = "bold 12px monospace";
             ctx.fillText(`${x},${y}`, screenX + 5, screenY + 15);
             ctx.restore();
-            ctx.translate(viewState.offsetX, viewState.offsetY);
-            ctx.scale(viewState.scale, viewState.scale);
           }
-        });
+        }
       }
 
       ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
       ctx.lineWidth = 1 / viewState.scale;
+      const bboxTl = toLocal(bbox.maxLat, bbox.minLong);
+      const bboxMercTl = latLngToMercator(bbox.maxLat, bbox.minLong);
+      const bboxMercBr = latLngToMercator(bbox.minLat, bbox.maxLong);
       ctx.strokeRect(
-        toLocalX(bbox.minLong),
-        toLocalY(bbox.maxLat),
-        (bbox.maxLong - bbox.minLong) * baseParams.baseScale,
-        (bbox.maxLat - bbox.minLat) * baseParams.baseScale,
+        bboxTl.x,
+        bboxTl.y,
+        (bboxMercBr.x - bboxMercTl.x) * baseParams.baseScale,
+        (bboxMercBr.y - bboxMercTl.y) * baseParams.baseScale,
       );
 
       // Draw start-finish line (BEFORE laps so it's underneath)
@@ -868,10 +1125,10 @@ export function TrackVisualizer({
             ctx.lineWidth = 1 / viewState.scale;
 
             ctx.beginPath();
-            ctx.moveTo(toLocalX(c1.long), toLocalY(c1.lat));
-            ctx.lineTo(toLocalX(c2.long), toLocalY(c2.lat));
-            ctx.lineTo(toLocalX(c3.long), toLocalY(c3.lat));
-            ctx.lineTo(toLocalX(c4.long), toLocalY(c4.lat));
+            ctx.moveTo(toLocal(c1.lat, c1.long).x, toLocal(c1.lat, c1.long).y);
+            ctx.lineTo(toLocal(c2.lat, c2.long).x, toLocal(c2.lat, c2.long).y);
+            ctx.lineTo(toLocal(c3.lat, c3.long).x, toLocal(c3.lat, c3.long).y);
+            ctx.lineTo(toLocal(c4.lat, c4.long).x, toLocal(c4.lat, c4.long).y);
             ctx.closePath();
             ctx.fill();
             ctx.stroke();
@@ -889,19 +1146,198 @@ export function TrackVisualizer({
       ctx.shadowBlur = 0;
 
       // Draw visible laps
-      data.laps.forEach((lap) => 
-      {
-        // Check if this lap is visible
-        if (!lap.visible) return;
+      const hasSectors = (data.trackData?.sectors?.length ?? 0) > 0;
+      const fastestLapIdx = data.getFastestVisibleLap();
+      const fastestLap = fastestLapIdx !== null ? data.laps.find((l) => l.index === fastestLapIdx) : null;
+      const fastestRows = fastestLap?.visible ? fastestLap.rows : [];
 
-        ctx.strokeStyle = lap.color;
-        ctx.beginPath();
-        const firstRow = lap.rows[0];
-        ctx.moveTo(toLocalX(firstRow.long), toLocalY(firstRow.lat));
-        for (let i = 1; i < lap.rows.length; i++) 
+      const lapsToDraw =
+        (trajectoryMode === "timeDelta" || trajectoryMode === "speedDelta" || trajectoryMode === "timeDeltaRate") && fastestLapIdx !== null
+          ? [
+              ...data.laps.filter((l) => l.visible && l.index === fastestLapIdx),
+              ...data.laps.filter((l) => l.visible && l.index !== fastestLapIdx),
+            ]
+          : data.laps.filter((l) => l.visible);
+
+      lapsToDraw.forEach((lap) => 
+      {
+        const baseColor = lap.color;
+        const darkColor = darkenColor(baseColor);
+        const rows = lap.rows;
+        const lastRow = rows[rows.length - 1];
+        const totalDist = lastRow?.lapDistanceFromStart ?? 0;
+
+        const baseLineWidth = 3 / viewState.scale;
+
+        if (trajectoryMode === "normal") 
         {
-          const row = lap.rows[i];
-          ctx.lineTo(toLocalX(row.long), toLocalY(row.lat));
+          if (!hasSectors) 
+          {
+            ctx.strokeStyle = baseColor;
+            ctx.beginPath();
+            const firstRow = rows[0];
+            ctx.moveTo(toLocal(firstRow.lat, firstRow.long).x, toLocal(firstRow.lat, firstRow.long).y);
+            for (let i = 1; i < rows.length; i++) 
+            {
+              const row = rows[i];
+              ctx.lineTo(toLocal(row.lat, row.long).x, toLocal(row.lat, row.long).y);
+            }
+            ctx.stroke();
+            return;
+          }
+          let currentSector = 0;
+          let strokeColor = (currentSector & 1) === 0 ? darkColor : baseColor;
+          ctx.strokeStyle = strokeColor;
+          ctx.beginPath();
+          const firstRow = rows[0];
+          ctx.moveTo(toLocal(firstRow.lat, firstRow.long).x, toLocal(firstRow.lat, firstRow.long).y);
+          for (let i = 1; i < rows.length; i++) 
+          {
+            const row = rows[i];
+            const sb = row.sectorBoundaryIndex;
+            if (sb !== undefined) 
+            {
+              ctx.lineTo(toLocal(row.lat, row.long).x, toLocal(row.lat, row.long).y);
+              ctx.stroke();
+              currentSector = sb + 1;
+              strokeColor = (currentSector & 1) === 0 ? darkColor : baseColor;
+              ctx.strokeStyle = strokeColor;
+              ctx.beginPath();
+              ctx.moveTo(toLocal(row.lat, row.long).x, toLocal(row.lat, row.long).y);
+            }
+            else 
+            {
+              ctx.lineTo(toLocal(row.lat, row.long).x, toLocal(row.lat, row.long).y);
+            }
+          }
+          ctx.stroke();
+          return;
+        }
+
+        const isDeltaMode = trajectoryMode === "timeDelta" || trajectoryMode === "speedDelta" || trajectoryMode === "timeDeltaRate";
+        if (isDeltaMode && fastestRows.length > 0 && totalDist > 0) 
+        {
+          ctx.save();
+          ctx.lineCap = "round";
+          ctx.lineJoin = "round";
+          const colorType = trajectoryMode === "timeDelta" ? "time" : trajectoryMode === "speedDelta" ? "speed" : "timeDeltaRate";
+          const widthType = trajectoryMode === "timeDelta" ? "time" : trajectoryMode === "speedDelta" ? "speed" : "timeDeltaRate";
+          const { base: baseMult, min: minMult, max: maxMult } = {
+            base: deltaBaseWidthMult,
+            min: deltaMinWidthMult,
+            max: deltaMaxWidthMult,
+          };
+
+          if (lap.index === fastestLapIdx) 
+          {
+            ctx.strokeStyle = "#0066ff";
+            ctx.lineWidth = baseLineWidth * baseMult;
+            ctx.beginPath();
+            const first = rows[0];
+            ctx.moveTo(toLocal(first.lat, first.long).x, toLocal(first.lat, first.long).y);
+            for (let i = 1; i < rows.length; i++) 
+            {
+              const r = rows[i];
+              ctx.lineTo(toLocal(r.lat, r.long).x, toLocal(r.lat, r.long).y);
+            }
+            ctx.stroke();
+            ctx.restore();
+            return;
+          }
+
+          const timeDeltas: number[] = [];
+          const speedDeltas: number[] = [];
+          const speedDeltasPercent: number[] = [];
+          for (let i = 1; i < rows.length; i++) 
+          {
+            const p1 = rows[i - 1];
+            const p2 = rows[i];
+            const d1 = p1.lapDistanceFromStart ?? 0;
+            const d2 = p2.lapDistanceFromStart ?? 0;
+            const norm = ((d1 + d2) / 2) / totalDist;
+            const refTime = getValueAtNormalized(fastestRows, norm, "time");
+            const refVel = getValueAtNormalized(fastestRows, norm, "velocity");
+            const valTime = (p1.lapTimeFromStart ?? 0) + 0.5 * ((p2.lapTimeFromStart ?? 0) - (p1.lapTimeFromStart ?? 0));
+            const valVel = (p1.velocity ?? 0) + 0.5 * ((p2.velocity ?? 0) - (p1.velocity ?? 0));
+            timeDeltas.push(valTime - refTime);
+            const speedDelta = valVel - refVel;
+            speedDeltas.push(speedDelta);
+            speedDeltasPercent.push(refVel !== 0 ? (speedDelta / refVel) * 100 : 0);
+          }
+          const timeDeltaRates: number[] = [];
+          for (let i = 0; i < timeDeltas.length; i++) 
+          {
+            const prev = i > 0 ? timeDeltas[i - 1] : 0;
+            timeDeltaRates.push(timeDeltas[i] - prev);
+          }
+          const minTimeDelta = Math.min(...timeDeltas);
+          const maxTimeDelta = Math.max(...timeDeltas);
+          const minSpeedDelta = Math.min(...speedDeltas);
+          const maxSpeedDelta = Math.max(...speedDeltas);
+          const minSpeedDeltaPercent = Math.min(...speedDeltasPercent);
+          const maxSpeedDeltaPercent = Math.max(...speedDeltasPercent);
+          const minTimeDeltaRate = Math.min(...timeDeltaRates);
+          const maxTimeDeltaRate = Math.max(...timeDeltaRates);
+
+          // Batch consecutive segments with same color to reduce stroke() calls
+          let lastColor = "";
+          let lastWidthMult = 0;
+          let pathStarted = false;
+          for (let i = 1; i < rows.length; i++) 
+          {
+            const deltaForColor =
+              colorType === "time" ? timeDeltas[i - 1] : colorType === "speed" ? speedDeltasPercent[i - 1] : timeDeltaRates[i - 1];
+            const deltaForWidth =
+              widthType === "time" ? timeDeltas[i - 1] : widthType === "speed" ? speedDeltas[i - 1] : timeDeltaRates[i - 1];
+            const minColor = colorType === "time" ? minTimeDelta : colorType === "speed" ? minSpeedDeltaPercent : minTimeDeltaRate;
+            const maxColor = colorType === "time" ? maxTimeDelta : colorType === "speed" ? maxSpeedDeltaPercent : maxTimeDeltaRate;
+            const minWidth = widthType === "time" ? minTimeDelta : widthType === "speed" ? minSpeedDelta : minTimeDeltaRate;
+            const maxWidth = widthType === "time" ? maxTimeDelta : widthType === "speed" ? maxSpeedDelta : maxTimeDeltaRate;
+            const tColor = deltaToT(deltaForColor, minColor, maxColor);
+            const tWidth = deltaToT(deltaForWidth, minWidth, maxWidth);
+            const color = tToColor(tColor);
+            let widthMult = tWidth <= 0 ? baseMult + tWidth * (baseMult - minMult) : baseMult + tWidth * (maxMult - baseMult);
+            widthMult = Math.max(0.25, Math.min(8, widthMult));
+            const p1 = rows[i - 1];
+            const p2 = rows[i];
+            const x1 = toLocal(p1.lat, p1.long).x;
+            const y1 = toLocal(p1.lat, p1.long).y;
+            const x2 = toLocal(p2.lat, p2.long).x;
+            const y2 = toLocal(p2.lat, p2.long).y;
+
+            if (color !== lastColor || widthMult !== lastWidthMult) 
+            {
+              if (pathStarted) 
+              {
+                ctx.stroke();
+              }
+              ctx.strokeStyle = color;
+              ctx.lineWidth = baseLineWidth * widthMult;
+              ctx.beginPath();
+              ctx.moveTo(x1, y1);
+              ctx.lineTo(x2, y2);
+              lastColor = color;
+              lastWidthMult = widthMult;
+              pathStarted = true;
+            }
+            else 
+            {
+              ctx.lineTo(x2, y2);
+            }
+          }
+          if (pathStarted) ctx.stroke();
+          ctx.restore();
+          return;
+        }
+
+        ctx.strokeStyle = baseColor;
+        ctx.beginPath();
+        const firstRow = rows[0];
+        ctx.moveTo(toLocal(firstRow.lat, firstRow.long).x, toLocal(firstRow.lat, firstRow.long).y);
+        for (let i = 1; i < rows.length; i++) 
+        {
+          const row = rows[i];
+          ctx.lineTo(toLocal(row.lat, row.long).x, toLocal(row.lat, row.long).y);
         }
         ctx.stroke();
       });
@@ -912,8 +1348,9 @@ export function TrackVisualizer({
       if (showStartFinishDebug && data.startFinish) 
       {
         const sf = data.startFinish;
-        const sfX = toLocalX(sf.point.long);
-        const sfY = toLocalY(sf.point.lat);
+        const sfLocal = toLocal(sf.point.lat, sf.point.long);
+        const sfX = sfLocal.x;
+        const sfY = sfLocal.y;
 
         // Compute two points of detection segment exactly as in algorithm (in meters)
         const halfWidth = sf.width / 2;
@@ -927,10 +1364,12 @@ export function TrackVisualizer({
         const point2_gps = metersToGps(detectionX2_m, detectionY2_m, bbox.minLat, bbox.minLong);
 
         // Convert to canvas local coords
-        const perpX1 = toLocalX(point1_gps.long);
-        const perpY1 = toLocalY(point1_gps.lat);
-        const perpX2 = toLocalX(point2_gps.long);
-        const perpY2 = toLocalY(point2_gps.lat);
+        const perp1 = toLocal(point1_gps.lat, point1_gps.long);
+        const perp2 = toLocal(point2_gps.lat, point2_gps.long);
+        const perpX1 = perp1.x;
+        const perpY1 = perp1.y;
+        const perpX2 = perp2.x;
+        const perpY2 = perp2.y;
 
         // Draw red thick detection line (end segment)
         ctx.strokeStyle = "rgba(255, 0, 0, 0.9)";
@@ -971,8 +1410,9 @@ export function TrackVisualizer({
         const arrowEndX_m = sf.pointMeters.x + sf.direction.x * arrowLengthMeters;
         const arrowEndY_m = sf.pointMeters.y + sf.direction.y * arrowLengthMeters;
         const arrowEnd_gps = metersToGps(arrowEndX_m, arrowEndY_m, bbox.minLat, bbox.minLong);
-        const dirEndX = toLocalX(arrowEnd_gps.long);
-        const dirEndY = toLocalY(arrowEnd_gps.lat);
+        const dirEnd = toLocal(arrowEnd_gps.lat, arrowEnd_gps.long);
+        const dirEndX = dirEnd.x;
+        const dirEndY = dirEnd.y;
         const arrowHeadSize = 10 / viewState.scale;
 
         ctx.strokeStyle = "rgba(0, 100, 255, 0.9)";
@@ -1005,8 +1445,9 @@ export function TrackVisualizer({
           {
             if (row.isInterpolated) 
             {
-              const x = toLocalX(row.long);
-              const y = toLocalY(row.lat);
+              const p = toLocal(row.lat, row.long);
+              const x = p.x;
+              const y = p.y;
               ctx.fillStyle = "rgba(255, 165, 0, 0.9)";
               ctx.strokeStyle = "rgba(0, 0, 0, 1)";
               ctx.lineWidth = 2 / viewState.scale;
@@ -1020,41 +1461,93 @@ export function TrackVisualizer({
         });
       }
 
-      const pointSize = 6 / viewState.scale;
-      ctx.lineWidth = 2 / viewState.scale;
-      ctx.fillStyle = "#00ff00";
-      ctx.strokeStyle = "#000";
-      ctx.beginPath();
-      ctx.arc(toLocalX(data.rows[0].long), toLocalY(data.rows[0].lat), pointSize, 0, 2 * Math.PI);
-      ctx.fill();
-      ctx.stroke();
+      // Debug visualization of sector detection lines
+      if (showSectorDebug && data.trackData?.sectors?.length) 
+      {
+        const sectors = data.trackData.sectors;
+        const sectorColors = [
+          "rgba(255, 0, 255, 0.9)",   // S1 magenta
+          "rgba(0, 255, 255, 0.9)",   // S2 cyan
+          "rgba(255, 255, 0, 0.9)",   // S3 yellow
+        ];
 
-      const last = data.rows[data.rows.length - 1];
-      ctx.fillStyle = "#0000ff";
-      ctx.beginPath();
-      ctx.arc(toLocalX(last.long), toLocalY(last.lat), pointSize, 0, 2 * Math.PI);
-      ctx.fill();
-      ctx.stroke();
+        sectors.forEach((sector, idx) => 
+        {
+          const halfWidth = sector.width / 2;
+          const detectionX1_m = sector.pointMeters.x - sector.perpendicular.x * halfWidth;
+          const detectionY1_m = sector.pointMeters.y - sector.perpendicular.y * halfWidth;
+          const detectionX2_m = sector.pointMeters.x + sector.perpendicular.x * halfWidth;
+          const detectionY2_m = sector.pointMeters.y + sector.perpendicular.y * halfWidth;
+
+          const point1_gps = metersToGps(detectionX1_m, detectionY1_m, bbox.minLat, bbox.minLong);
+          const point2_gps = metersToGps(detectionX2_m, detectionY2_m, bbox.minLat, bbox.minLong);
+
+          const perp1 = toLocal(point1_gps.lat, point1_gps.long);
+          const perp2 = toLocal(point2_gps.lat, point2_gps.long);
+          const perpX1 = perp1.x;
+          const perpY1 = perp1.y;
+          const perpX2 = perp2.x;
+          const perpY2 = perp2.y;
+
+          const color = sectorColors[idx % sectorColors.length];
+
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 4 / viewState.scale;
+          ctx.beginPath();
+          ctx.moveTo(perpX1, perpY1);
+          ctx.lineTo(perpX2, perpY2);
+          ctx.stroke();
+
+          ctx.fillStyle = color;
+          ctx.strokeStyle = "rgba(0, 0, 0, 1)";
+          ctx.lineWidth = 2 / viewState.scale;
+          const endPointSize = 5 / viewState.scale;
+          ctx.beginPath();
+          ctx.arc(perpX1, perpY1, endPointSize, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(perpX2, perpY2, endPointSize, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.stroke();
+
+          const centerLocal = toLocal(sector.point.lat, sector.point.long);
+          const centerX = centerLocal.x;
+          const centerY = centerLocal.y;
+          ctx.fillStyle = color;
+          ctx.strokeStyle = "rgba(255, 255, 255, 1)";
+          const centerSize = 6 / viewState.scale;
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, centerSize, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.stroke();
+        });
+      }
 
       ctx.restore();
 
       // === DEBUG HOVER DRAWING (only when enabled) ===
-      if (showHoverDebug && debugHoverData && mousePos) 
+      if (showHoverDebug && currentDebugHoverData && currentMousePos) 
       {
         ctx.save();
         ctx.translate(viewState.offsetX, viewState.offsetY);
         ctx.scale(viewState.scale, viewState.scale);
 
-        const md = debugHoverData;
+        const md = currentDebugHoverData;
 
-        // Convert meters to canvas local coords
-        const toLocalX = (long: number) => (long - baseParams.centerX) * baseParams.baseScale;
-        const toLocalY = (lat: number) => -(lat - baseParams.centerY) * baseParams.baseScale;
-
-        // Convert track meters to GPS, then to local
+        // Convert meters to GPS, then to Mercator local coords
+        const toLocal = (lat: number, lng: number) => 
+        {
+          const m = latLngToMercator(lat, lng);
+          return {
+            x: (m.x - baseParams.centerMercX) * baseParams.baseScale,
+            y: (m.y - baseParams.centerMercY) * baseParams.baseScale,
+          };
+        };
         const mouseGps = metersToGps(md.mouseMeters.x, md.mouseMeters.y, bbox.minLat, bbox.minLong);
-        const mouseLX = toLocalX(mouseGps.long);
-        const mouseLY = toLocalY(mouseGps.lat);
+        const mouseLocal = toLocal(mouseGps.lat, mouseGps.long);
+        const mouseLX = mouseLocal.x;
+        const mouseLY = mouseLocal.y;
 
         // 1. Cursor crosshair
         ctx.strokeStyle = "#FFFF00";
@@ -1070,7 +1563,9 @@ export function TrackVisualizer({
         // 2. Search radius circle (x2 of min distance)
         ctx.strokeStyle = "rgba(255, 255, 0, 0.5)";
         ctx.lineWidth = 1 / viewState.scale;
-        const searchRadiusLocal = md.searchRadius * baseParams.baseScale;
+        const metersPerLocalUnit =
+          (40075000 * Math.cos((bbox.centerLat * Math.PI) / 180)) / baseParams.baseScale;
+        const searchRadiusLocal = md.searchRadius / metersPerLocalUnit;
         ctx.beginPath();
         ctx.arc(mouseLX, mouseLY, searchRadiusLocal, 0, 2 * Math.PI);
         ctx.stroke();
@@ -1078,7 +1573,7 @@ export function TrackVisualizer({
         // 3. Min distance circle
         ctx.strokeStyle = "rgba(0, 255, 0, 0.7)";
         ctx.lineWidth = 2 / viewState.scale;
-        const minDistLocal = md.minDistance * baseParams.baseScale;
+        const minDistLocal = md.minDistance / metersPerLocalUnit;
         ctx.beginPath();
         ctx.arc(mouseLX, mouseLY, minDistLocal, 0, 2 * Math.PI);
         ctx.stroke();
@@ -1091,12 +1586,15 @@ export function TrackVisualizer({
           const p2Gps = metersToGps(seg.p2.x, seg.p2.y, bbox.minLat, bbox.minLong);
           const projGps = metersToGps(seg.proj.x, seg.proj.y, bbox.minLat, bbox.minLong);
 
-          const p1LX = toLocalX(p1Gps.long);
-          const p1LY = toLocalY(p1Gps.lat);
-          const p2LX = toLocalX(p2Gps.long);
-          const p2LY = toLocalY(p2Gps.lat);
-          const projLX = toLocalX(projGps.long);
-          const projLY = toLocalY(projGps.lat);
+          const p1L = toLocal(p1Gps.lat, p1Gps.long);
+          const p2L = toLocal(p2Gps.lat, p2Gps.long);
+          const projL = toLocal(projGps.lat, projGps.long);
+          const p1LX = p1L.x;
+          const p1LY = p1L.y;
+          const p2LX = p2L.x;
+          const p2LY = p2L.y;
+          const projLX = projL.x;
+          const projLY = projL.y;
 
           // Draw segment (checked part of trajectory)
           ctx.strokeStyle = seg.inRange ? "rgba(0, 255, 0, 0.8)" : "rgba(255, 0, 0, 0.5)";
@@ -1137,16 +1635,16 @@ export function TrackVisualizer({
         const panelHeight = 80;
 
         // Fit panel inside canvas area
-        let panelX = mousePos.x + 20;
-        let panelY = mousePos.y - panelHeight;
+        let panelX = currentMousePos.x + 20;
+        let panelY = currentMousePos.y - panelHeight;
 
         if (panelX + panelWidth > canvas.width) 
         {
-          panelX = mousePos.x - panelWidth - 20;
+          panelX = currentMousePos.x - panelWidth - 20;
         }
         if (panelY < 0) 
         {
-          panelY = mousePos.y + 20;
+          panelY = currentMousePos.y + 20;
         }
         if (panelX < 0) panelX = 10;
 
@@ -1161,7 +1659,7 @@ export function TrackVisualizer({
 
         ctx.fillStyle = "#FFFF00";
         ctx.fillText(
-          `Screen: (${mousePos.x.toFixed(0)}, ${mousePos.y.toFixed(0)})`,
+          `Screen: (${currentMousePos.x.toFixed(0)}, ${currentMousePos.y.toFixed(0)})`,
           panelX + 5,
           yOffset,
         );
@@ -1187,21 +1685,21 @@ export function TrackVisualizer({
         );
         yOffset += 13;
 
-        ctx.fillStyle = hoveredPoints.length > 0 ? "#00FF00" : "#FFFFFF";
-        ctx.fillText(`Found: ${hoveredPoints.length} points`, panelX + 5, yOffset);
+        ctx.fillStyle = currentHoveredPoints.length > 0 ? "#00FF00" : "#FFFFFF";
+        ctx.fillText(`Found: ${currentHoveredPoints.length} points`, panelX + 5, yOffset);
 
         ctx.restore();
       }
 
       // Hover points (final found points) - shown from local hover
-      const isLocalHover = hoveredPoints.length > 0;
-      if (isLocalHover && !showHoverDebug) 
+      const isLocalHover = currentHoveredPoints.length > 0;
+      if (isLocalHover) 
       {
         ctx.save();
         ctx.translate(viewState.offsetX, viewState.offsetY);
         ctx.scale(viewState.scale, viewState.scale);
 
-        hoveredPoints.forEach((point) => 
+        currentHoveredPoints.forEach((point) => 
         {
           // Convert point screen coords to canvas local
           const localX = (point.x - viewState.offsetX) / viewState.scale;
@@ -1210,67 +1708,37 @@ export function TrackVisualizer({
           // Draw point on trajectory
           ctx.fillStyle = point.lapColor;
           ctx.strokeStyle = "#ffffff";
-          ctx.lineWidth = 3 / viewState.scale;
-          const hoverPointSize = 8 / viewState.scale;
+          ctx.lineWidth = 2 / viewState.scale;
+          const hoverPointSize = 5 / viewState.scale;
           ctx.beginPath();
           ctx.arc(localX, localY, hoverPointSize, 0, 2 * Math.PI);
           ctx.fill();
-          ctx.stroke();
-
-          // Draw circle around point
-          ctx.strokeStyle = point.lapColor;
-          ctx.lineWidth = 2 / viewState.scale;
-          ctx.beginPath();
-          ctx.arc(localX, localY, hoverPointSize * 1.8, 0, 2 * Math.PI);
           ctx.stroke();
         });
 
         ctx.restore();
       }
 
-      // Synced projection from charts (when not local hover)
-      if (!isLocalHover && projectionDistance !== null && projectionDistance >= 0) 
+      // Synced projection from charts (when not local hover) - use hoveredPoints which are already computed per-lap
+      if (!isLocalHover && projection !== null && hoveredPointsForRenderRef.current.length > 0) 
       {
         ctx.save();
         ctx.translate(viewState.offsetX, viewState.offsetY);
         ctx.scale(viewState.scale, viewState.scale);
 
-        // Draw projection points on all visible laps
-        data.laps.forEach((lap) => 
+        // Draw projection points (already computed in useEffect with per-lap logic)
+        hoveredPointsForRenderRef.current.forEach((pt) => 
         {
-          if (!lap.visible) return;
+          const localX = (pt.x - viewState.offsetX) / viewState.scale;
+          const localY = (pt.y - viewState.offsetY) / viewState.scale;
 
-          // Find point at target distance
-          const chart = lap.getChart("velocity"); // Any chart to get point
-          if (!chart) return;
+          const lap = data.laps.find((l) => l.index === pt.lapIndex);
+          if (!lap) return;
 
-          // Find row at target distance
-          let targetRow = null;
-          for (const row of lap.rows) 
-          {
-            if (
-              row.lapDistanceFromStart !== undefined &&
-              Math.abs(row.lapDistanceFromStart - projectionDistance) < 10
-            ) 
-            {
-              targetRow = row;
-              break;
-            }
-          }
-
-          if (!targetRow) return;
-
-          const toLocalX = (long: number) => (long - baseParams.centerX) * baseParams.baseScale;
-          const toLocalY = (lat: number) => -(lat - baseParams.centerY) * baseParams.baseScale;
-
-          const localX = toLocalX(targetRow.long);
-          const localY = toLocalY(targetRow.lat);
-
-          // Draw point
           ctx.fillStyle = lap.color;
           ctx.strokeStyle = "#ffffff";
           ctx.lineWidth = 2 / viewState.scale;
-          const pointSize = 6 / viewState.scale;
+          const pointSize = 4 / viewState.scale;
           ctx.beginPath();
           ctx.arc(localX, localY, pointSize, 0, 2 * Math.PI);
           ctx.fill();
@@ -1299,8 +1767,14 @@ export function TrackVisualizer({
     showTileBorders,
     showTileLabels,
     showStartFinishDebug,
+    showSectorDebug,
     showHoverDebug,
+    trajectoryMode,
+    deltaBaseWidthMult,
+    deltaMinWidthMult,
+    deltaMaxWidthMult,
     updateCounter,
+    projection,
     hoveredPoints,
     mousePos,
     debugHoverData,
@@ -1308,6 +1782,24 @@ export function TrackVisualizer({
 
   return (
     <div className="track-visualizer" ref={containerRef}>
+      <button
+        className="trajectory-mode-toggle"
+        onClick={cycleTrajectoryMode}
+        title={
+          trajectoryMode === "normal"
+            ? "Normal (lap colors)"
+            : trajectoryMode === "timeDelta"
+              ? "Time delta (green=faster, red=slower)"
+              : trajectoryMode === "speedDelta"
+                ? "Speed delta (green=faster, red=slower)"
+                : "Delta of time delta (green=gaining, red=losing)"
+        }
+      >
+        {trajectoryMode === "normal" && "Colors"}
+        {trajectoryMode === "timeDelta" && "Δt"}
+        {trajectoryMode === "speedDelta" && "Δv"}
+        {trajectoryMode === "timeDeltaRate" && "d(Δt)"}
+      </button>
       <canvas
         ref={canvasRef}
         width={dimensions.width}
@@ -1332,7 +1824,7 @@ export function TrackVisualizer({
           // Tooltip dimensions (approximate)
           const tooltipWidth = 280;
           const tooltipHeight = 50 + hoveredPoints.length * 75;
-          const offset = 15;
+          const offset = 28; // Larger gap from cursor for better visibility
 
           // Position: use mousePos if set, else first point position
           let tooltipX = 0;
@@ -1472,7 +1964,7 @@ export function TrackVisualizer({
                   onChange={(e) => onToleranceChange?.(parseInt(e.target.value))}
                   className="setting-slider"
                 />
-              </div>
+            </div>
               <div
                 className="debug-line"
                 style={{ marginTop: "8px", fontSize: "10px", color: "#888" }}
@@ -1502,29 +1994,80 @@ export function TrackVisualizer({
             </div>
 
             <div className="debug-section">
+              <h4>Delta Trajectory Width</h4>
+              <div className="setting-item">
+                <label className="setting-label">Base width: {deltaBaseWidthMult}x</label>
+                <input
+                  type="range"
+                  min="1"
+                  max="4"
+                  step="0.5"
+                  value={deltaBaseWidthMult}
+                  onChange={(e) => setDeltaBaseWidthMult(parseFloat(e.target.value))}
+                  className="setting-slider"
+                />
+              </div>
+              <div className="setting-item">
+                <label className="setting-label">Min (green): {deltaMinWidthMult}x</label>
+                <input
+                  type="range"
+                  min="0.25"
+                  max="2"
+                  step="0.25"
+                  value={deltaMinWidthMult}
+                  onChange={(e) => setDeltaMinWidthMult(parseFloat(e.target.value))}
+                  className="setting-slider"
+                />
+              </div>
+              <div className="setting-item">
+                <label className="setting-label">Max (red): {deltaMaxWidthMult}x</label>
+                <input
+                  type="range"
+                  min="2"
+                  max="8"
+                  step="0.5"
+                  value={deltaMaxWidthMult}
+                  onChange={(e) => setDeltaMaxWidthMult(parseFloat(e.target.value))}
+                  className="setting-slider"
+                />
+              </div>
+              <div className="debug-line" style={{ fontSize: "10px", color: "#888", marginTop: "4px" }}>
+                Base=default, Min=thinner when faster, Max=thicker when slower
+              </div>
+            </div>
+
+            <div className="debug-section">
               <h4>Hover Detection</h4>
               <label className="debug-checkbox">
                 <input type="checkbox" checked={showHoverDebug} onChange={toggleHoverDebug} />
                 <span>Show hover debug</span>
               </label>
-            </div>
+                </div>
 
             <div className="debug-section">
               <h4>Start/Finish Detection</h4>
               <label className="debug-checkbox">
-                <input
-                  type="checkbox"
+                    <input
+                      type="checkbox"
                   checked={showStartFinishDebug}
                   onChange={toggleStartFinishDebug}
                 />
                 <span>Show detection line</span>
+                  </label>
+              <label className="debug-checkbox">
+                <input
+                  type="checkbox"
+                  checked={showSectorDebug}
+                  onChange={toggleSectorDebug}
+                />
+                <span>Show sector lines</span>
               </label>
               {data.startFinish && (
                 <>
                   <div className="debug-line">
                     Position: ({data.startFinish.pointMeters.x.toFixed(2)},{" "}
                     {data.startFinish.pointMeters.y.toFixed(2)})m
-                  </div>
+                </div>
                   <div className="debug-line">
                     Direction: ({data.startFinish.direction.x.toFixed(4)},{" "}
                     {data.startFinish.direction.y.toFixed(4)})

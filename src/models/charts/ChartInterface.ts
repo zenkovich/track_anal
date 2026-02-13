@@ -10,7 +10,29 @@ import { LapData } from "../LapData";
 export interface ChartDataPoint {
   distance: number; // Distance from lap start (m)
   value: number; // Parameter value
+  /** Time from lap start (ms) */
+  time: number;
+  /** Normalized 0..1: distance / totalLapDistance */
+  normalized: number;
+  /** Sector boundary index (0..2): point is on boundary between sector N and N+1 */
+  sectorBoundaryIndex?: number;
 }
+
+/** Projection mode: how to convert normalized chart position to track projection */
+export type ChartProjectionMode = "distance" | "time" | "normalized";
+
+/** Canonical X from fastest lap - used to project onto all laps */
+export interface CanonicalX {
+  distance: number;
+  timeMs: number;
+  normalized: number;
+}
+
+/** Shared projection: from chart (normalized) or from track (canonical X from fastest lap) */
+export type Projection =
+  | { type: "chart"; normalized: number; mouseX: number }
+  | { type: "track"; canonical: CanonicalX }
+  | null;
 
 /**
  * Chart interface
@@ -54,9 +76,24 @@ export interface IChart {
 
   /**
    * Get value at distance (with interpolation)
-   * @param distance Distance from lap start (m)
    */
   getValueAtDistance(distance: number): number | null;
+
+  /**
+   * Get value at time (with interpolation)
+   */
+  getValueAtTime(timeMs: number): number | null;
+
+  /**
+   * Get value at normalized position 0..1 (with interpolation)
+   */
+  getValueAtNormalized(normalized: number): number | null;
+
+  /** Total lap distance (m) - for cursor conversion */
+  getTotalDistance(): number;
+
+  /** Total lap time (ms) - for cursor conversion */
+  getTotalTime(): number;
 }
 
 /**
@@ -88,21 +125,60 @@ export abstract class BaseChart implements IChart
   getValueAtDistance(distance: number): number | null 
   {
     if (this.points.length === 0) return null;
-
-    // Find nearest points for interpolation
     for (let i = 1; i < this.points.length; i++) 
     {
       const p1 = this.points[i - 1];
       const p2 = this.points[i];
-
       if (distance >= p1.distance && distance <= p2.distance) 
       {
-        // Linear interpolation
-        const t = (distance - p1.distance) / (p2.distance - p1.distance);
+        const t = (distance - p1.distance) / (p2.distance - p1.distance || 0.001);
         return p1.value + t * (p2.value - p1.value);
       }
     }
-
     return null;
+  }
+
+  getValueAtTime(timeMs: number): number | null 
+  {
+    if (this.points.length === 0) return null;
+    for (let i = 1; i < this.points.length; i++) 
+    {
+      const p1 = this.points[i - 1];
+      const p2 = this.points[i];
+      if (timeMs >= p1.time && timeMs <= p2.time) 
+      {
+        const t = (timeMs - p1.time) / (p2.time - p1.time || 0.001);
+        return p1.value + t * (p2.value - p1.value);
+      }
+    }
+    return null;
+  }
+
+  getValueAtNormalized(normalized: number): number | null 
+  {
+    if (this.points.length === 0) return null;
+    for (let i = 1; i < this.points.length; i++) 
+    {
+      const p1 = this.points[i - 1];
+      const p2 = this.points[i];
+      if (normalized >= p1.normalized && normalized <= p2.normalized) 
+      {
+        const t = (normalized - p1.normalized) / (p2.normalized - p1.normalized || 0.001);
+        return p1.value + t * (p2.value - p1.value);
+      }
+    }
+    return null;
+  }
+
+  getTotalDistance(): number 
+  {
+    if (this.points.length === 0) return 0;
+    return this.points[this.points.length - 1].distance;
+  }
+
+  getTotalTime(): number 
+  {
+    if (this.points.length === 0) return 0;
+    return this.points[this.points.length - 1].time;
   }
 }

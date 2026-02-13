@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { VBOData } from "../models/VBOData";
-import { FilterIcon, FilterOffIcon, TopNIcon, FilterSmallIcon } from "./Icons";
+import { FilterIcon, FilterOffIcon, FilterSmallIcon, TopNIcon } from "./Icons";
 import "./LapsPanel.css";
 
 interface LapsPanelProps {
@@ -9,10 +9,10 @@ interface LapsPanelProps {
   onToggleAllLaps: (show: boolean) => void;
   updateCounter: number; // Force re-render
   tolerancePercent: number;
-  sortField?: "lap" | "distance" | "time" | "speed" | null;
+  sortField?: "lap" | "time" | "speed" | "s1" | "s2" | "s3" | "s4" | null;
   sortDirection?: "asc" | "desc";
   onSortChange?: (
-    field: "lap" | "distance" | "time" | "speed" | null,
+    field: "lap" | "time" | "speed" | "s1" | "s2" | "s3" | "s4" | null,
     direction: "asc" | "desc"
   ) => void;
   onLapOrderChange?: (order: number[]) => void;
@@ -30,7 +30,7 @@ export function LapsPanel({
   onLapOrderChange,
 }: LapsPanelProps) 
 {
-  const [panelWidth, setPanelWidth] = useState(400);
+  const [panelWidth, setPanelWidth] = useState(544);
   const [isResizing, setIsResizing] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [filterOutliers, setFilterOutliers] = useState(true); // Enabled by default
@@ -39,7 +39,7 @@ export function LapsPanel({
   const sortDirection = sortDirectionProp || "asc";
 
   // Sort handler
-  const handleSort = (field: "lap" | "distance" | "time" | "speed") => 
+  const handleSort = (field: "lap" | "time" | "speed" | "s1" | "s2" | "s3" | "s4") => 
   {
     if (sortField === field) 
     {
@@ -73,14 +73,24 @@ export function LapsPanel({
           case "lap":
             compareValue = a.index - b.index;
             break;
-          case "distance":
-            compareValue = statsA.distance - statsB.distance;
-            break;
           case "time":
             compareValue = statsA.time - statsB.time;
             break;
           case "speed":
             compareValue = statsA.maxSpeed - statsB.maxSpeed;
+            break;
+          case "s1":
+          case "s2":
+          case "s3":
+          case "s4":
+            {
+              const sectorIdx = parseInt(sortField[1], 10) - 1;
+              const sectorA = a.getSectorData().find((s) => s.sectorIndex === sectorIdx);
+              const sectorB = b.getSectorData().find((s) => s.sectorIndex === sectorIdx);
+              const timeA = sectorA?.timeMs ?? 0;
+              const timeB = sectorB?.timeMs ?? 0;
+              compareValue = timeA - timeB;
+            }
             break;
         }
 
@@ -99,16 +109,22 @@ export function LapsPanel({
   const fastestLapIndex = data.getFastestVisibleLap();
   const fastestLapTime =
     fastestLapIndex !== null ? data.laps[fastestLapIndex].getStats().time : null;
+  const fastestLapSectorTimes =
+    fastestLapIndex !== null
+      ? data.laps[fastestLapIndex].getSectorData().map((s) => s.timeMs)
+      : null;
 
-  const handleSoloLap = (lapIndex: number) => 
+  const hasSectors = data.trackData && data.trackData.sectors.length > 0;
+
+  const handleSoloLap = useCallback((lapIndex: number) => 
   {
     // Hide all laps
     onToggleAllLaps(false);
     // Show only selected
     onToggleLap(lapIndex);
-  };
+  }, [onToggleAllLaps, onToggleLap]);
 
-  const handleToggleAllDisplayed = (checked: boolean) => 
+  const handleToggleAllDisplayed = useCallback((checked: boolean) => 
   {
     // Toggle only displayed laps
     displayedLaps.forEach((lap) => 
@@ -118,14 +134,14 @@ export function LapsPanel({
         onToggleLap(lap.index);
       }
     });
-  };
+  }, [displayedLaps, onToggleLap]);
 
-  const toggleFilter = () => 
+  const toggleFilter = useCallback(() => 
   {
-    setFilterOutliers(!filterOutliers);
-  };
+    setFilterOutliers((prev) => !prev);
+  }, []);
 
-  const selectTopN = (n: number) => 
+  const selectTopN = useCallback((n: number) => 
   {
     // First enable sort by time (ascending)
     onSortChange?.("time", "asc");
@@ -166,20 +182,26 @@ export function LapsPanel({
         }
       });
     }, 50);
-  };
+  }, [data, filterOutliers, tolerancePercent, onSortChange, onToggleAllLaps, onToggleLap]);
 
   // Update lap order when sort or filters change
   const lastOrderRef = useRef<string | null>(null);
+  const onLapOrderChangeRef = useRef(onLapOrderChange);
+  
+  useEffect(() => 
+  {
+    onLapOrderChangeRef.current = onLapOrderChange;
+  }, [onLapOrderChange]);
 
   useEffect(() => 
   {
-    if (!onLapOrderChange) return;
+    if (!onLapOrderChangeRef.current) return;
     const order = displayedLaps.map((lap) => lap.index);
     const orderKey = order.join(",");
     if (orderKey === lastOrderRef.current) return;
     lastOrderRef.current = orderKey;
-    onLapOrderChange(order);
-  }, [displayedLaps, onLapOrderChange]);
+    onLapOrderChangeRef.current(order);
+  }, [displayedLaps]);
 
   // Force re-render when updateCounter changes
   useEffect(() => 
@@ -187,11 +209,11 @@ export function LapsPanel({
     // Just trigger re-render
   }, [updateCounter]);
 
-  const handleResizerMouseDown = (e: React.MouseEvent) => 
+  const handleResizerMouseDown = useCallback((e: React.MouseEvent) => 
   {
     e.preventDefault();
     setIsResizing(true);
-  };
+  }, []);
 
   useEffect(() => 
   {
@@ -305,12 +327,19 @@ export function LapsPanel({
                 <th className="col-lap sortable" onClick={() => handleSort("lap")}>
                   Lap {sortField === "lap" && (sortDirection === "asc" ? "▲" : "▼")}
                 </th>
-                <th className="col-distance sortable" onClick={() => handleSort("distance")}>
-                  Distance {sortField === "distance" && (sortDirection === "asc" ? "▲" : "▼")}
-                </th>
                 <th className="col-time sortable" onClick={() => handleSort("time")}>
                   Time {sortField === "time" && (sortDirection === "asc" ? "▲" : "▼")}
                 </th>
+                {hasSectors &&
+                  [1, 2, 3, 4].map((s) => (
+                    <th
+                      key={s}
+                      className="col-sector sortable"
+                      onClick={() => handleSort(`s${s}` as "s1" | "s2" | "s3" | "s4")}
+                    >
+                      S{s} {sortField === `s${s}` && (sortDirection === "asc" ? "▲" : "▼")}
+                    </th>
+                  ))}
                 <th className="col-speed sortable" onClick={() => handleSort("speed")}>
                   Max Speed {sortField === "speed" && (sortDirection === "asc" ? "▲" : "▼")}
                 </th>
@@ -333,6 +362,12 @@ export function LapsPanel({
                   timeDelta = deltaSec >= 0 ? `+${deltaSec.toFixed(3)}` : deltaSec.toFixed(3);
                   timeDeltaColor = deltaMs < 0 ? "#00ff00" : "#ff6666";
                 }
+
+                const sectorData = lap.getSectorData();
+                const sectorSumMs = sectorData.reduce((sum, s) => sum + s.timeMs, 0);
+                const lapTimeMs = stats.time;
+                const timeDiffMs = Math.abs(sectorSumMs - lapTimeMs);
+                const sectorTimeValid = timeDiffMs <= 10;
 
                 return (
                   <tr key={lap.index} className={lap.visible ? "active" : ""}>
@@ -364,15 +399,60 @@ export function LapsPanel({
                       )}
                       {stats.name}
                     </td>
-                    <td className="col-distance">{(stats.distance / 1000).toFixed(2)} km</td>
                     <td className="col-time">
-                      <div>{stats.timeFormatted}</div>
+                      <div>
+                        {stats.timeFormatted}
+                        {!sectorTimeValid && hasSectors && (
+                          <span
+                            title={`Sector sum differs from lap time by ${(timeDiffMs / 1000).toFixed(3)}s`}
+                            style={{ color: "#ff6666", marginLeft: 4 }}
+                          >
+                            ⚠
+                          </span>
+                        )}
+                      </div>
                       {timeDelta && (
                         <div className="time-delta" style={{ color: timeDeltaColor }}>
                           {timeDelta}
                         </div>
                       )}
                     </td>
+                    {hasSectors &&
+                      [0, 1, 2, 3].map((sectorIdx) => 
+                      {
+                        const sector = sectorData.find((sd) => sd.sectorIndex === sectorIdx);
+                        const sectorTimeMs = sector?.timeMs ?? 0;
+                        const refTime = fastestLapSectorTimes?.[sectorIdx];
+                        let sectorDelta = null;
+                        let sectorDeltaColor = "";
+                        if (
+                          lap.visible &&
+                          refTime !== undefined &&
+                          sectorTimeMs > 0 &&
+                          !(isFastest && sectorIdx === 0)
+                        ) 
+                        {
+                          const deltaMs = sectorTimeMs - refTime;
+                          const deltaSec = deltaMs / 1000;
+                          sectorDelta =
+                            deltaSec >= 0 ? `+${deltaSec.toFixed(3)}` : deltaSec.toFixed(3);
+                          sectorDeltaColor = deltaMs < 0 ? "#00ff00" : "#ff6666";
+                        }
+                        const sectorFormatted = sectorTimeMs > 0
+                          ? `${(sectorTimeMs / 1000).toFixed(3)}`
+                          : "-";
+
+                        return (
+                          <td key={sectorIdx} className="col-sector">
+                            <div>{sectorFormatted}</div>
+                            {sectorDelta && (
+                              <div className="time-delta" style={{ color: sectorDeltaColor }}>
+                                {sectorDelta}
+                              </div>
+                            )}
+                          </td>
+                        );
+                      })}
                     <td className="col-speed">{stats.maxSpeed} km/h</td>
                   </tr>
                 );

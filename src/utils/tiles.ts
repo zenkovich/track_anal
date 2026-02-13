@@ -14,6 +14,30 @@ export interface LatLng {
 }
 
 /**
+ * Web Mercator projection (matches tile coordinate system).
+ * Returns normalized coordinates 0..1 for the world.
+ */
+export function latLngToMercator(lat: number, lng: number): { x: number; y: number } 
+{
+  const latClamp = Math.max(-85.051129, Math.min(85.051129, lat));
+  const x = (lng + 180) / 360;
+  const latRad = (latClamp * Math.PI) / 180;
+  const y = (1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2;
+  return { x, y };
+}
+
+/**
+ * Inverse Web Mercator: normalized 0..1 to lat/lng.
+ */
+export function mercatorToLatLng(x: number, y: number): LatLng 
+{
+  const lng = x * 360 - 180;
+  const latRad = Math.atan(Math.sinh(Math.PI * (1 - 2 * y)));
+  const lat = (latRad * 180) / Math.PI;
+  return { lat, lng };
+}
+
+/**
  * Convert lat/lng to tile coordinates
  */
 export function latLngToTile(lat: number, lng: number, zoom: number): TileCoord 
@@ -37,32 +61,48 @@ export function tileToLatLng(x: number, y: number, zoom: number): LatLng
   return { lat, lng };
 }
 
+/** Maximum zoom level for Google Maps satellite */
+const MAX_TILE_ZOOM = 21;
+
+/** Target tile count at start - balance between speed and sharpness (~40-60) */
+const TARGET_INITIAL_TILES = 50;
+
 /**
- * Compute optimal zoom for given bbox
+ * Compute zoom for given bbox - start with ~50 tiles for balance of speed and detail.
+ * Returns the highest zoom where tile count <= TARGET_INITIAL_TILES.
+ * More detailed tiles load as user zooms in.
  */
 export function calculateZoom(
   minLat: number,
   maxLat: number,
   minLng: number,
   maxLng: number,
-  canvasWidth: number,
-  canvasHeight: number,
+  _canvasWidth: number,
+  _canvasHeight: number,
 ): number 
 {
-  for (let zoom = 18; zoom >= 1; zoom--) 
+  let bestZoom = 1;
+
+  for (let zoom = 1; zoom <= MAX_TILE_ZOOM; zoom++) 
   {
     const topLeft = latLngToTile(maxLat, minLng, zoom);
     const bottomRight = latLngToTile(minLat, maxLng, zoom);
 
     const tilesX = bottomRight.x - topLeft.x + 1;
     const tilesY = bottomRight.y - topLeft.y + 1;
+    const totalTiles = tilesX * tilesY;
 
-    if (tilesX * 256 <= canvasWidth * 1.5 && tilesY * 256 <= canvasHeight * 1.5) 
+    if (totalTiles <= TARGET_INITIAL_TILES) 
     {
-      return zoom;
+      bestZoom = zoom;
+    }
+    else 
+    {
+      break; // Exceeded target - use previous zoom
     }
   }
-  return 1;
+
+  return bestZoom;
 }
 
 /**
@@ -102,6 +142,44 @@ export function getTilesForBounds(
   return tiles;
 }
 
+/**
+ * Check if tile (x,y,z) is fully covered by higher-zoom tiles up to maxDrawZoom.
+ * Only considers tiles at z' where z < z' <= maxDrawZoom (we don't draw tiles above maxDrawZoom).
+ */
+export function isTileFullyCovered(
+  x: number,
+  y: number,
+  z: number,
+  tiles: Map<string, HTMLImageElement>,
+  maxDrawZoom: number,
+): boolean 
+{
+  const tileKey = (zx: number, zy: number, zz: number) => `${zz}/${zx}/${zy}`;
+
+  for (let zPrime = z + 1; zPrime <= maxDrawZoom; zPrime++) 
+  {
+    const d = Math.pow(2, zPrime - z);
+    const startX = x * d;
+    const startY = y * d;
+    const endX = (x + 1) * d - 1;
+    const endY = (y + 1) * d - 1;
+
+    let allPresent = true;
+    for (let tx = startX; tx <= endX && allPresent; tx++) 
+    {
+      for (let ty = startY; ty <= endY && allPresent; ty++) 
+      {
+        if (!tiles.has(tileKey(tx, ty, zPrime))) 
+        {
+          allPresent = false;
+        }
+      }
+    }
+    if (allPresent) return true;
+  }
+  return false;
+}
+
 export type TileSource = "google" | "osm";
 
 /**
@@ -137,7 +215,7 @@ export class TileCache
 {
   private cache = new Map<string, HTMLImageElement>();
   private loading = new Map<string, Promise<HTMLImageElement>>();
-  private maxSize = 100;
+  private maxSize = 1000;
   private source: TileSource;
 
   constructor(source: TileSource = "google") 

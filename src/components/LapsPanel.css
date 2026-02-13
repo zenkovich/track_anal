@@ -312,6 +312,20 @@
   opacity: 0.85;
 }
 
+/* Sector columns */
+.col-sector {
+  text-align: right;
+  min-width: 52px;
+}
+
+.col-sector > div {
+  line-height: 1.2;
+}
+
+.col-sector > div:first-child {
+  margin-bottom: 1px;
+}
+
 /* Speed column */
 .col-speed {
   text-align: right;

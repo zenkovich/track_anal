@@ -1,11 +1,12 @@
-import { useState, useCallback } from "react";
+import { useCallback, useState, useRef } from "react";
 import "./App.css";
-import { TrackVisualizer } from "./components/TrackVisualizer";
-import { LapsPanel } from "./components/LapsPanel";
 import { ChartsPanel } from "./components/ChartsPanel";
+import { FolderIcon, MapIcon, RacingFlagIcon, ResetIcon, SettingsIcon } from "./components/Icons";
+import { LapsPanel } from "./components/LapsPanel";
+import { TrackVisualizer } from "./components/TrackVisualizer";
 import { VBOData } from "./models/VBOData";
+import { Projection, ChartProjectionMode } from "./models/charts";
 import { VBOParser } from "./utils/vboParser";
-import { FolderIcon, MapIcon, ResetIcon, RacingFlagIcon, SettingsIcon } from "./components/Icons";
 
 function App() 
 {
@@ -17,19 +18,22 @@ function App()
   const [showSettingsPanel, setShowSettingsPanel] = useState<boolean>(false);
   const [updateCounter, setUpdateCounter] = useState<number>(0); // Force re-render
   const [tolerancePercent, setTolerancePercent] = useState<number>(15); // Tolerance from median for outlier filter
-  const [sortField, setSortField] = useState<"lap" | "distance" | "time" | "speed" | null>(null);
+  const [sortField, setSortField] = useState<"lap" | "time" | "speed" | "s1" | "s2" | "s3" | "s4" | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [lapOrder, setLapOrder] = useState<number[]>([]); // Lap indices order after sorting
-  const [projectionDistance, setProjectionDistance] = useState<number | null>(null); // Shared distance for synced projections
+  const [projection, setProjection] = useState<Projection>(null); // Shared projection (chart normalized or track distance)
+  const [projectionMode, setProjectionMode] = useState<ChartProjectionMode>("normalized"); // How to project onto track when from chart
+  
+  const lastProjectionRef = useRef<Projection>(null);
 
-  const handleSortChange = (
-    field: "lap" | "distance" | "time" | "speed" | null,
+  const handleSortChange = useCallback((
+    field: "lap" | "time" | "speed" | "s1" | "s2" | "s3" | "s4" | null,
     direction: "asc" | "desc",
   ) => 
   {
     setSortField(field);
     setSortDirection(direction);
-  };
+  }, []);
 
   const handleLapOrderChange = useCallback((order: number[]) => 
   {
@@ -78,34 +82,65 @@ function App()
     }
   };
 
-  const handleOpenClick = () => 
+  const handleOpenClick = useCallback(() => 
   {
     document.getElementById("file-input")?.click();
-  };
+  }, []);
 
-  const handleToggleTiles = () => 
+  const handleToggleTiles = useCallback(() => 
   {
     setShowTiles((prev) => !prev);
-  };
+  }, []);
 
-  const handleReset = () => 
+  const handleReset = useCallback(() => 
   {
     setResetTrigger((prev) => prev + 1);
-  };
+  }, []);
 
-  const toggleAllLaps = (show: boolean) => 
+  const toggleAllLaps = useCallback((show: boolean) => 
   {
     if (!vboData) return;
     vboData.setAllLapsVisibility(show);
     setUpdateCounter((prev) => prev + 1); // Force re-render
-  };
+  }, [vboData]);
 
-  const toggleLap = (lapIdx: number) => 
+  const toggleLap = useCallback((lapIdx: number) => 
   {
     if (!vboData) return;
     vboData.toggleLapVisibility(lapIdx);
     setUpdateCounter((prev) => prev + 1); // Force re-render
-  };
+  }, [vboData]);
+
+  const handleToleranceChange = useCallback((tolerance: number) => 
+  {
+    setTolerancePercent(tolerance);
+  }, []);
+
+  // Unified projection update handler
+  // Track: apply immediately for smooth cursor following. Chart: can throttle if needed.
+  const handleProjectionChange = useCallback((newProjection: Projection) => 
+  {
+    const prev = lastProjectionRef.current;
+    const changed =
+      newProjection === null && prev !== null ||
+      newProjection !== null && (prev === null ||
+        (prev.type !== newProjection.type) ||
+        (prev.type === "chart" && newProjection.type === "chart" &&
+          (Math.abs(prev.normalized - newProjection.normalized) > 0.0005 || prev.mouseX !== newProjection.mouseX)) ||
+        (prev.type === "track" && newProjection.type === "track" &&
+          Math.abs(prev.canonical.distance - newProjection.canonical.distance) > 1e-6));
+
+    if (changed) 
+    {
+      lastProjectionRef.current = newProjection;
+      setProjection(newProjection);
+    }
+  }, []);
+
+  const handleProjectionModeChange = useCallback((mode: ChartProjectionMode) => 
+  {
+    setProjectionMode(mode);
+  }, []);
 
   // Extract metadata for display
   const getCompactInfo = (data: VBOData) => 
@@ -240,10 +275,11 @@ function App()
                   showSettingsPanel={showSettingsPanel}
                   updateCounter={updateCounter}
                   tolerancePercent={tolerancePercent}
-                  onToleranceChange={setTolerancePercent}
+                  onToleranceChange={handleToleranceChange}
                   lapOrder={lapOrder}
-                  projectionDistance={projectionDistance}
-                  onProjectionDistanceChange={setProjectionDistance}
+                  projection={projection}
+                  projectionMode={projectionMode}
+                  onProjectionChange={handleProjectionChange}
                 />
               </div>
               <LapsPanel
@@ -262,8 +298,10 @@ function App()
               data={vboData}
               updateCounter={updateCounter}
               lapOrder={lapOrder}
-              projectionDistance={projectionDistance}
-              onProjectionDistanceChange={setProjectionDistance}
+              projection={projection}
+              projectionMode={projectionMode}
+              onProjectionChange={handleProjectionChange}
+              onProjectionModeChange={handleProjectionModeChange}
             />
           </>
         )}

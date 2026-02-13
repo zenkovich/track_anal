@@ -296,6 +296,42 @@ export const TimeDeltaIcon = ({ size = 20, color = "currentColor" }: IconProps) 
   </svg>
 );
 
+export const TimeDeltaRateIcon = ({ size = 20, color = "currentColor" }: IconProps) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    {/* Clock with rate curve (d/dt) */}
+    <circle
+      cx="12"
+      cy="12"
+      r="9"
+      stroke={color}
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M12 6V12L15 14"
+      stroke={color}
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    {/* Small curve indicating derivative/rate */}
+    <path
+      d="M7 16Q9 14 11 15Q13 16 15 15"
+      stroke={color}
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      fill="none"
+    />
+  </svg>
+);
+
 export const VelocityDeltaIcon = ({ size = 20, color = "currentColor" }: IconProps) => (
   <svg
     width={size}
@@ -421,5 +457,37 @@ export const RacingFlagIcon = ({ size = 20, color = "currentColor" }: IconProps)
 
     {/* Flag border */}
     <rect x="5" y="4" width="16" height="12" fill="none" stroke={color} strokeWidth="1" />
+  </svg>
+);
+
+/** Trajectory mode: normal (lap colors) */
+export const TrajectoryNormalIcon = ({ size = 20, color = "currentColor" }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M4 12C4 8 8 6 12 6C16 6 20 8 20 12C20 16 16 18 12 18C8 18 4 16 4 12Z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M12 6V18" stroke={color} strokeWidth="0.8" strokeLinecap="round"/>
+    <path d="M12 6C10 8 9 10 9 12C9 14 10 16 12 18" stroke={color} strokeWidth="0.8" strokeLinecap="round"/>
+    <path d="M12 6C14 8 15 10 15 12C15 14 14 16 12 18" stroke={color} strokeWidth="0.8" strokeLinecap="round"/>
+  </svg>
+);
+
+/** Trajectory mode: time delta (green/yellow/red) */
+export const TrajectoryTimeDeltaIcon = ({ size = 20, color = "currentColor" }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="2"/>
+    <path d="M12 6V12L16 14" stroke={color} strokeWidth="2" strokeLinecap="round"/>
+    <path d="M6 12H18" stroke={color} strokeWidth="0.8" strokeLinecap="round"/>
+    <path d="M12 6L12 18" stroke={color} strokeWidth="0.8" strokeLinecap="round"/>
+    <path d="M4 12C4 8 8 6 12 6" stroke="#00ff00" strokeWidth="1" strokeLinecap="round" opacity="0.8"/>
+    <path d="M20 12C20 16 16 18 12 18" stroke="#ff3333" strokeWidth="1" strokeLinecap="round" opacity="0.8"/>
+  </svg>
+);
+
+/** Trajectory mode: speed delta */
+export const TrajectorySpeedDeltaIcon = ({ size = 20, color = "currentColor" }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M4 12C4 8 8 6 12 6C16 6 20 8 20 12C20 16 16 18 12 18C8 18 4 16 4 12Z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M12 6L14 10L16 9L15 12L18 12L14 14L15 18L12 15L9 18L10 14L6 12L9 12L8 9L10 10L12 6Z" stroke={color} strokeWidth="1" strokeLinejoin="round" fill="none"/>
+    <path d="M12 6C10 9 9 12 9 12" stroke="#00ff00" strokeWidth="1" strokeLinecap="round" opacity="0.8"/>
+    <path d="M12 18C14 15 15 12 15 12" stroke="#ff3333" strokeWidth="1" strokeLinecap="round" opacity="0.8"/>
   </svg>
 );

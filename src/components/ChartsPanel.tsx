@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { VBOData } from "../models/VBOData";
-import { GraphIcon, VelocityIcon, TimeDeltaIcon, VelocityDeltaIcon } from "./Icons";
+import { GraphIcon, VelocityIcon, TimeDeltaIcon, VelocityDeltaIcon, TimeDeltaRateIcon } from "./Icons";
 import { ChartView } from "./ChartView";
-import { ChartType, CHART_TYPES } from "../models/charts";
+import { ChartType, CHART_TYPES, ChartProjectionMode, Projection } from "../models/charts";
 import "./ChartsPanel.css";
 
 // Icon mapping
@@ -10,22 +10,27 @@ const CHART_ICONS: Record<string, React.ComponentType<{ size?: number; color?: s
   VelocityIcon: VelocityIcon,
   TimeDeltaIcon: TimeDeltaIcon,
   VelocityDeltaIcon: VelocityDeltaIcon,
+  TimeDeltaRateIcon: TimeDeltaRateIcon,
 };
 
 interface ChartsPanelProps {
   data: VBOData;
   updateCounter: number;
   lapOrder: number[];
-  projectionDistance: number | null;
-  onProjectionDistanceChange: (distance: number | null) => void;
+  projection: Projection;
+  projectionMode: ChartProjectionMode;
+  onProjectionChange: (projection: Projection) => void;
+  onProjectionModeChange: (mode: ChartProjectionMode) => void;
 }
 
 export function ChartsPanel({
   data,
   updateCounter,
   lapOrder = [],
-  projectionDistance,
-  onProjectionDistanceChange,
+  projection,
+  projectionMode,
+  onProjectionChange,
+  onProjectionModeChange,
 }: ChartsPanelProps) 
 {
   const [collapsed, setCollapsed] = useState(false);
@@ -49,6 +54,12 @@ export function ChartsPanel({
   // Local mouse position for tooltip
   const [localMouseX, setLocalMouseX] = useState<number | null>(null);
   const validChartTypes = useMemo(() => new Set(CHART_TYPES.map((ct) => ct.type)), []);
+  
+  const onProjectionChangeRef = useRef(onProjectionChange);
+  useEffect(() => 
+  {
+    onProjectionChangeRef.current = onProjectionChange;
+  }, [onProjectionChange]);
 
   useEffect(() => 
   {
@@ -59,25 +70,28 @@ export function ChartsPanel({
     });
   }, [validChartTypes]);
 
-  const toggleChart = (type: ChartType) => 
+  const toggleChart = useCallback((type: ChartType) => 
   {
-    const newSet = new Set(selectedCharts);
-    if (newSet.has(type)) 
+    setSelectedCharts((prev) => 
     {
-      newSet.delete(type);
-    }
-    else 
-    {
-      newSet.add(type);
-    }
-    setSelectedCharts(newSet);
-  };
+      const newSet = new Set(prev);
+      if (newSet.has(type)) 
+      {
+        newSet.delete(type);
+      }
+      else 
+      {
+        newSet.add(type);
+      }
+      return newSet;
+    });
+  }, []);
 
-  const handleResizerMouseDown = (e: React.MouseEvent) => 
+  const handleResizerMouseDown = useCallback((e: React.MouseEvent) => 
   {
     e.preventDefault();
     setIsResizing(true);
-  };
+  }, []);
 
   // Initialize flex ratios when chart count changes
   useEffect(() => 
@@ -119,12 +133,12 @@ export function ChartsPanel({
   }, [isResizing]);
 
   // Resizer for separators between charts
-  const handleSeparatorMouseDown = (index: number, e: React.MouseEvent) => 
+  const handleSeparatorMouseDown = useCallback((index: number, e: React.MouseEvent) => 
   {
     e.preventDefault();
     setResizingIndex(index);
     setResizeStartY(e.clientY);
-  };
+  }, []);
 
   useEffect(() => 
   {
@@ -170,6 +184,42 @@ export function ChartsPanel({
     };
   }, [resizingIndex, resizeStartY, panelHeight]);
 
+  // Stable callback for shared cursor change (chart sends normalized 0..1)
+  const handleSharedCursorChange = useCallback((normalized: number | null, mouseX: number | null) => 
+  {
+    setLocalMouseX(mouseX);
+    onProjectionChangeRef.current(
+      normalized !== null ? { type: "chart", normalized, mouseX: mouseX ?? 0 } : null
+    );
+  }, []);
+
+  // Create memoized handlers map for Y zoom/pan per chart type
+  const yZoomHandlers = useMemo(() => 
+  {
+    const handlers = new Map<ChartType, (zoom: number) => void>();
+    CHART_TYPES.forEach((ct) => 
+    {
+      handlers.set(ct.type, (zoom: number) => 
+      {
+        setYZooms((prev) => new Map(prev).set(ct.type, zoom));
+      });
+    });
+    return handlers;
+  }, []);
+
+  const yPanHandlers = useMemo(() => 
+  {
+    const handlers = new Map<ChartType, (pan: number) => void>();
+    CHART_TYPES.forEach((ct) => 
+    {
+      handlers.set(ct.type, (pan: number) => 
+      {
+        setYPans((prev) => new Map(prev).set(ct.type, pan));
+      });
+    });
+    return handlers;
+  }, []);
+
   return (
     <div
       className={`charts-panel ${collapsed ? "collapsed" : ""}`}
@@ -196,6 +246,25 @@ export function ChartsPanel({
             <h3>
               <GraphIcon size={20} /> Graphs
             </h3>
+            <div className="chart-x-axis-selector">
+              <span className="chart-x-axis-label">X axis:</span>
+              {(["distance", "time", "normalized"] as ChartProjectionMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  className={`chart-x-axis-button ${projectionMode === mode ? "selected" : ""}`}
+                  onClick={() => onProjectionModeChange(mode)}
+                  title={
+                    mode === "distance"
+                      ? "Projection by distance"
+                      : mode === "time"
+                        ? "Projection by time"
+                        : "Projection by normalized position"
+                  }
+                >
+                  {mode === "distance" ? "Dist" : mode === "time" ? "Time" : "Norm"}
+                </button>
+              ))}
+            </div>
             <div className="chart-icons-selector">
               {CHART_TYPES.map((chartType) => 
               {
@@ -243,25 +312,18 @@ export function ChartsPanel({
                         data={data}
                         chartType={chartType}
                         updateCounter={updateCounter}
+                        xAxisMode={projectionMode}
                         xZoom={xZoom}
                         xPan={xPan}
                         yZoom={yZooms.get(chartType) || 1}
                         yPan={yPans.get(chartType) || 0}
                         onXZoomChange={setXZoom}
                         onXPanChange={setXPan}
-                        onYZoomChange={(zoom) =>
-                          setYZooms((prev) => new Map(prev).set(chartType, zoom))
-                        }
-                        onYPanChange={(pan) =>
-                          setYPans((prev) => new Map(prev).set(chartType, pan))
-                        }
-                        sharedCursorDistance={projectionDistance}
+                        onYZoomChange={yZoomHandlers.get(chartType) || (() => {})}
+                        onYPanChange={yPanHandlers.get(chartType) || (() => {})}
+                        projection={projection}
                         sharedMouseX={localMouseX}
-                        onSharedCursorChange={(distance, mouseX) => 
-                        {
-                          onProjectionDistanceChange(distance);
-                          setLocalMouseX(mouseX);
-                        }}
+                        onSharedCursorChange={handleSharedCursorChange}
                         lapOrder={lapOrder}
                       />
                     </div>

@@ -9,16 +9,16 @@
  * 5. Split into laps
  */
 
-import { VBOHeader, VBODataRow, BoundingBox, StartFinishLine } from "../models/types";
-import { VBOData } from "../models/VBOData";
 import { LapData, getLapColor } from "../models/LapData";
+import { VBOData } from "../models/VBOData";
+import { BoundingBox, StartFinishLine, VBODataRow, VBOHeader } from "../models/types";
 import {
-  gpsToMeters,
-  metersToGps,
-  haversineDistance,
-  vboToDecimal,
-  parseFormattedTimeToMs,
-  formatVBOTime,
+    formatVBOTime,
+    gpsToMeters,
+    haversineDistance,
+    metersToGps,
+    parseFormattedTimeToMs,
+    vboToDecimal,
 } from "./coordinateUtils";
 import { normalizeVector, perpendicular, segmentIntersection } from "./geometryUtils";
 
@@ -74,6 +74,9 @@ export class VBOParser
 
     // 9. Recalculate charts with best lap (for deltas)
     vboData.recalculateChartsForAllLaps();
+
+    // 10. Compute track data (sectors from fastest lap) and sector times per lap
+    vboData.computeTrackData();
 
     console.log("=== VBO Parser Complete ===");
     return vboData;
@@ -487,11 +490,8 @@ export class VBOParser
 
 // Export legacy types for backward compatibility
 export type {
-  VBOHeader,
-  VBODataRow,
-  BoundingBox,
-  StartFinishLine,
-  Vector2D,
+    BoundingBox,
+    StartFinishLine, VBODataRow, VBOHeader, Vector2D
 } from "../models/types";
 
 // Export VBOData

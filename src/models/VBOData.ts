@@ -2,8 +2,14 @@
  * VBO file data model
  */
 
-import { VBOHeader, VBODataRow, BoundingBox, StartFinishLine } from "./types";
 import { LapData, getLapColor } from "./LapData";
+import { TrackData } from "./TrackData";
+import { BoundingBox, StartFinishLine, VBODataRow, VBOHeader } from "./types";
+import {
+  addSectorPointsToRows,
+  computeLapSectorData,
+  createTrackData,
+} from "../utils/sectorUtils";
 
 /**
  * Main VBO file data class with all tracks and laps
@@ -21,6 +27,9 @@ export class VBOData
 
   /** Start/finish line (if detected) */
   readonly startFinish?: StartFinishLine;
+
+  /** Track data (name, sectors) - created after heuristics */
+  private _trackData: TrackData | null = null;
 
   /**
    * Track laps with parameters and visibility
@@ -55,6 +64,14 @@ export class VBOData
   get laps(): LapData[] 
   {
     return this._laps;
+  }
+
+  /**
+   * Get track data (sectors, etc.)
+   */
+  get trackData(): TrackData | null 
+  {
+    return this._trackData;
   }
 
   /**
@@ -185,6 +202,61 @@ export class VBOData
     });
 
     console.log(`[Heuristics] Hidden ${hiddenCount} outlier laps`);
+  }
+
+  /**
+   * Compute track data and sector times for all laps
+   * Call after applyTimeHeuristics (fastest lap excludes outliers)
+   */
+  computeTrackData(): void 
+  {
+    if (!this.startFinish || this._laps.length === 0) return;
+
+    const fastestIdx = this.getFastestVisibleLap();
+    if (fastestIdx === null) return;
+
+    const fastestLap = this._laps[fastestIdx];
+    const fastestRows = fastestLap.rows;
+    const trackLength = fastestLap.getStats().distance;
+
+    if (trackLength <= 0) return;
+
+    const trackName = this.getMetadata()["Model"] ?? "Track";
+    this._trackData = createTrackData(
+      fastestRows,
+      this.startFinish,
+      this.boundingBox,
+      trackName,
+    );
+
+    const sectors = this._trackData.sectors;
+
+    this._laps = this._laps.map((lap) => 
+    {
+      const enhancedRows = addSectorPointsToRows(
+        lap.rows,
+        sectors,
+        this.boundingBox,
+      );
+
+      const newLap = new LapData(
+        lap.index,
+        enhancedRows,
+        lap.color,
+        lap.startIdx,
+        lap.endIdx,
+        this.rows,
+      );
+      newLap.visible = lap.visible;
+
+      const sectorData = computeLapSectorData(enhancedRows, trackLength);
+      newLap.setSectorData(sectorData);
+
+      return newLap;
+    });
+
+    this.recalculateChartsForAllLaps();
+    console.log(`[TrackData] Created track "${trackName}", ${sectors.length} sector boundaries`);
   }
 
   /**

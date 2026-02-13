@@ -48,6 +48,8 @@ export interface VBODataRow {
 
   // Flags
   isInterpolated?: boolean; // Point created by interpolation (at intersection)
+  /** Sector boundary index (0..2): this point is on boundary between sector N and N+1 */
+  sectorBoundaryIndex?: number;
 }
 
 /**
@@ -73,4 +75,18 @@ export interface StartFinishLine {
   direction: Vector2D; // Movement direction across line
   perpendicular: Vector2D; // Perpendicular (line direction)
   width: number; // Detection line width (m)
+}
+
+/**
+ * Sector data per lap - time and trajectory indices
+ */
+export interface LapSectorData {
+  /** Sector index (0..3) */
+  sectorIndex: number;
+  /** Time through sector (ms) */
+  timeMs: number;
+  /** Index of row where sector starts (in lap rows) */
+  startRowIndex: number;
+  /** Index of row where sector ends (in lap rows) */
+  endRowIndex: number;
 }
